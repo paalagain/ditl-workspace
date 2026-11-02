@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "workflow": "order",
+  "roles": [
+    "developer"
+  ],
+  "supportedVersions": {
+    "bundle": 1,
+    "config": 2,
+    "state": 1
+  },
+  "revisions": {
+    "project.md": 5,
+    "format.md": 6,
+    "setup.md": 10,
+    "orders-create.md": 4,
+    "orders.md": 3,
+    "cancellation.md": 2
+  },
+  "sources": {
+    "SKILL.md": "ffd650e0258d64d21e44f480320f23460b55d41ae186bca57dfd4746d1ef9166",
+    "agents/openai.yaml": "66804be5c385c5655df18059dec17a84351f357a50814dc27954c2e5a45918b6",
+    "references/project.md": "36b6b8a25d4cac757230815cec004faaed0e102beec5e9542dbfd0c96bf01157",
+    "references/format.md": "fefd76cd298c08dcc4a92fcde5246cdb4cab5283243afdd861a2c320cdca71a0",
+    "references/setup.md": "f0eb8a7e654c3fc5eafb450cafe91060391f98377c28800276a59d464ee4d6df",
+    "references/orders-create.md": "65884cd4346057b920dab8a6e5dbc51715d8cad9a7029bd38b7b2cb47da7560d",
+    "references/orders.md": "70a51b80d40e6cdcc7de14028845b7e5c6256e5ff97c035d28a4f17ec035cfd2",
+    "references/cancellation.md": "9efea6dd2c5476e26ade65752f04ce63a0cdcd9bfa3859ec63ae6dfe6380be4d",
+    "LICENSE": "12f427a032bbeb4f0e99bf4084820449244b89ab91d2f878cd2b2bc9dba51516",
+    "scripts/install-human-readme.mjs": "2d320cc3f9d976c1589f6c3b6867b39f033d286b1049fd36933c0bce3d9ee639",
+    "templates/HUMAN-README.md": "6cb3b82b82487caca140487477e82bfb16cc978c1854b17eb36578caf054b35a"
+  }
+}

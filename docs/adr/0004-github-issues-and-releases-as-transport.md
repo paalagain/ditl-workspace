@@ -1,0 +1,3 @@
+# Pass work through GitHub issues and releases in a separate repo
+
+Work orders travel as issues and deliveries as releases in a private GitHub repo used only for transport, driven through `gh` with no local clone. GitHub then owns all shared state, so neither side edits a shared file and the designer never meets git conflicts; a separate repo means joining needs no access to the product code. We rejected a shared git repo (the designer would face merges), a synced folder (conflicted copies and partially synced files) and object storage or a custom service (credentials and a status writer we would have to build).

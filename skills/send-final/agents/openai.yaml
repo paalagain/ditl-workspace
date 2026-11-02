@@ -1,0 +1,5 @@
+interface:
+  display_name: "send-final"
+  short_description: "Deliver a selected prototype and complete its work order."
+policy:
+  allow_implicit_invocation: false

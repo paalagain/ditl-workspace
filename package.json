@@ -1,0 +1,35 @@
+{
+  "name": "ditl-workspace",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.20"
+  },
+  "bin": {
+    "designeritl-install": "tools/install.mjs"
+  },
+  "files": [
+    "tools/install.mjs",
+    "tools/install-human-readme.mjs",
+    "tools/skills-cli.mjs",
+    "templates/HUMAN-README.md"
+  ],
+  "dependencies": {
+    "@clack/prompts": "1.8.1",
+    "skills": "1.7.4"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "node tools/bundle.mjs",
+    "check": "node tools/bundle.mjs --check",
+    "build:source": "node tools/bundle.mjs --source",
+    "check:source": "node tools/bundle.mjs --source --check",
+    "trial": "node --test --test-concurrency=1 trials/*.test.mjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paalagain/ditl-workspace.git"
+  }
+}

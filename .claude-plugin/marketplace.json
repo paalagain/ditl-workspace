@@ -1,0 +1,18 @@
+{
+  "name": "designer-in-the-loop",
+  "owner": { "name": "paalagain" },
+  "plugins": [
+    {
+      "name": "collaboration-skills",
+      "source": "./",
+      "description": "Exchange work orders and prototype deliveries between designer and developer.",
+      "skills": ["./skills/inbox", "./skills/order", "./skills/send", "./skills/send-final"]
+    },
+    {
+      "name": "toolbox-skills",
+      "source": "./",
+      "description": "Tools for working with the local prototype design.",
+      "skills": ["./skills/new-version"]
+    }
+  ]
+}

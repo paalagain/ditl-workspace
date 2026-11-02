@@ -1,0 +1,5 @@
+interface:
+  display_name: "inbox"
+  short_description: "Find work and start or resume an order, check only when requested, or receive verified deliveries."
+policy:
+  allow_implicit_invocation: false

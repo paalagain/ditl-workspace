@@ -1,0 +1,5 @@
+interface:
+  display_name: "order"
+  short_description: "Create a numbered work order or linked feedback, recovering an interrupted request."
+policy:
+  allow_implicit_invocation: false

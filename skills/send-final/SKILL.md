@@ -1,0 +1,7 @@
+---
+name: send-final
+description: "Deliver a selected prototype and complete its work order."
+disable-model-invocation: true
+---
+
+Read [Project](references/project.md), then [Deliveries](references/delivery.md). Perform its final-delivery path for the explicitly opened project. Ask for the order and version choices when not supplied; never infer completion from local ticks. Report the verified delivery identity and whether closure completed. Completion is the designer's decision and does not mean developer acceptance.

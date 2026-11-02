@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.zip binary
+*.png binary
+# Materialized bundles carry exact-byte hashes; Git checkout must preserve them.
+/skills/** -text

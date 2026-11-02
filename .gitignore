@@ -1,0 +1,6 @@
+dist/
+.trial/
+node_modules/
+EDU.md
+*.EDU.md
+/docs/edu/lessons.md
