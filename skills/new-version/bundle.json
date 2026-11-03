@@ -12,7 +12,7 @@
   "revisions": {
     "project.md": 5,
     "format.md": 6,
-    "setup.md": 10,
+    "setup.md": 11,
     "versions.md": 4,
     "portability.md": 2
   },
@@ -21,7 +21,7 @@
     "agents/openai.yaml": "4e76f95e0711f66d818a05fd145336b8ef48d368c329203b3e1f0f7b217c2574",
     "references/project.md": "36b6b8a25d4cac757230815cec004faaed0e102beec5e9542dbfd0c96bf01157",
     "references/format.md": "fefd76cd298c08dcc4a92fcde5246cdb4cab5283243afdd861a2c320cdca71a0",
-    "references/setup.md": "f0eb8a7e654c3fc5eafb450cafe91060391f98377c28800276a59d464ee4d6df",
+    "references/setup.md": "012640ee4d2ddb8d3043f89d48decb9fc0814ee9d8cd47c5786d495ddc819a60",
     "references/versions.md": "7964aa30045773b694394d20e2144c1e040dd58d6df71cfb16e0e87046847b27",
     "references/portability.md": "33bd4377501591a3218e4324ea633d29268bf7700d792aadb6e10514b5d3c808",
     "LICENSE": "12f427a032bbeb4f0e99bf4084820449244b89ab91d2f878cd2b2bc9dba51516",

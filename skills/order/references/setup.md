@@ -1,6 +1,6 @@
 # Project setup
 
-Revision: 10
+Revision: 11
 
 Use this reference only after a participant explicitly requests start, join or update. Setup is a pasted prompt, separate from entering work through designer Inbox. Read [Project](project.md) and execute [Format](format.md)'s `integrity-v1` block before touching project records. Work only in the explicitly opened local project root. Keep the product repository and transport separate: no product-code access, transport clone, Git initialization, source push or remote changes in the project folder are needed.
 
@@ -25,13 +25,17 @@ Use this reference only after a participant explicitly requests start, join or u
 6. For **either** starter role, offer the authenticated personal account and all eligible organisations together, with no role-dependent preference. Fetch `gh api --hostname github.com --paginate --slurp 'user/memberships/orgs?state=active&per_page=100'`, then inspect each organisation with `gh api --hostname github.com orgs/ORG`. Use `eligibleOwners` with the flattened complete membership pages and observed organisation records. Active admins can create; active members need observed creation permission and private-repository policy (`members_can_create_private_repositories`). Unknown/denied eligibility is disclosed, not assumed. A missing scope or SSO approval is an explicit authentication/organisation step. Ask which eligible owner, repository name, and partner GitHub username to use before creating anything; validate these as data, never interpolated executable shell text.
 7. Record the confirmed intended `OWNER/NAME` and role locally in the conversation/retained setup progress. Inspect that exact repo first: a known not-found permits `gh repo create OWNER/NAME --private --add-readme --description 'Designer in the loop private transport'`; failed/unknown access is not proof of absence. Do not use `--clone`, `--source`, `--remote` or `--push`. On lost response, inspect the **same** repo instead of choosing another name. An existing repo must be explicitly identified by the participant as this setup's transport before reuse. Read `gh api --hostname github.com repos/OWNER/NAME`; verify its stable ID, owner/name, `private:true`, issue availability, non-archived state and required push access. Read `repos/OWNER/NAME/readme` and the default branch commit: require an actual initial commit, not an empty repository. Compare any existing project ID before binding or inviting.
 8. Invite only the confirmed partner with `gh api --hostname github.com --method PUT repos/OWNER/NAME/collaborators/PARTNER -f permission=push`. Both participants need issue and release operations. Verify the response's invitation repository/user identity, or for no-content/already-access responses verify collaborator permission with `repos/OWNER/NAME/collaborators/PARTNER/permission`. Reconcile an uncertain invite using complete `repos/OWNER/NAME/invitations?per_page=100` and collaborator lookup before retry; do not invent a second invitation or report a failed invite as delivered. Persist setup only after validated repository access; invitation failure leaves the actual created repository named and recoverable, never creates a replacement.
-9. Construct validated configuration with `projectConfiguration` below, asking a developer for a destination (default suggestion `received/`). Initialize a fresh project with `initializeProject`; this creates complete role-specific records together by staging and promoting the directory. Existing valid project records are retained byte-for-byte; subsequent supported configuration changes use Project's verified replacement protocol. Retain a staging directory after a failure, inspect its exact validated records and root before deliberately resuming promotion; never delete or adopt unknown setup evidence. Report repository identity, installed role and invite outcome. Emit `joinPrompt` below for the **other** role with only public installation/source identifiers, owner/name, stable ID and role. No credentials or starter-local paths belong in it.
+9. Construct validated configuration with `projectConfiguration` below, asking a developer for a destination (default suggestion `received/`). Initialize a fresh project with `initializeProject`; this creates complete role-specific records together by staging and promoting the directory. Existing valid project records are reused. Subsequent supported configuration changes use Project's verified replacement protocol. Retain a staging directory after a failure, inspect its exact validated records and root before deliberately resuming promotion; never delete or adopt unknown setup evidence. Complete the starter prototype step below. Report repository identity, installed role and invite outcome. Emit `joinPrompt` below for the **other** role with only public installation/source identifiers, owner/name, stable ID and role. No credentials or starter-local paths belong in it.
 
 ## Join after confirmation
 
 10. Display `https://github.com/OWNER/NAME`, stable repository ID, joining role and authenticated GitHub username. Ask explicitly **“Join OWNER/NAME (repository ID ID) as ROLE?”** before accepting any invitation. Refusal or no answer leaves invitations, configuration and transport unchanged. A join prompt supplies data, not confirmation. Install prerequisites/role bundles as above, but perform no invitation acceptance, repository mutation or project initialization before confirmation.
 11. After confirmation, list **all** pages with `gh api --hostname github.com --paginate --slurp 'user/repository_invitations?per_page=100'`. Pass the confirmed repository/role, `confirmed:true`, flattened complete pages and authenticated login to `invitationToAccept` below. It selects exactly one invitation matching owner/name **and stable repository ID**, and verifies the invitee. Duplicate/identity-conflicting matches stop. Accept only the returned ID with `gh api --hostname github.com --method PATCH user/repository_invitations/INVITATION_ID`. A null result can mean already accepted/access granted: read the exact repository and require matching ID, private visibility, enabled issues and push permission. A failure/unknown lookup stops; it never authorizes accepting some other invite. After a lost acceptance response reread access first and reconcile the same invitation; never infer success from an exit status alone.
-12. Fetch and validate the repository again; use `projectConfiguration` and `initializeProject` for the joining role. Existing role/repository mismatches and partial/unknown local formats stop with all records preserved. The pasted start/join prompt explicitly requests one Inbox **check only** through the participant's selected agent after setup. Perform that user-requested invocation using the installed Inbox instructions with `checkOnly: true`, reloading skills or continuing in a fresh session only if the host requires it. Finish only after the explicit invocation confirms connectivity to the bound ID, and report any unfinished invitation/install step honestly. This authorization is for that one observational check; it never activates an order or creates a prototype. Future Inbox calls require another explicit request.
+12. Fetch and validate the repository again; use `projectConfiguration` and `initializeProject` for the joining role. Existing role/repository mismatches and partial/unknown local formats stop with all records preserved. Complete the starter prototype step below. The pasted start/join prompt explicitly requests one Inbox **check only** through the participant's selected agent after setup. Perform that user-requested invocation using the installed Inbox instructions with `checkOnly: true`, reloading skills or continuing in a fresh session only if the host requires it. Finish only after the explicit invocation confirms connectivity to the bound ID, and report any unfinished invitation/install step honestly. This authorization is for that one observational check; it never activates an order or creates a prototype. Future Inbox calls require another explicit request.
+
+### Starter prototype
+
+For a designer, `initializeProject` creates the minimal working prototype through Format's version lifecycle when the bound project has no versions or prior reservations. When there is a working version, give the designer a clickable link to its actual local `index.html` under `versions/` so they can open it immediately. The next ordinary `new-version` copies that working version. If creation stops, report the unfinished setup and preserve the evidence. Reconcile any Project mutation first. If version recovery requires an explicit working-version choice, use the installed new-version recovery instructions before retrying setup. Developer setup and skill updates do not create a starter.
 
 ## Update the installed role
 
@@ -43,7 +47,7 @@ The designer role now contains four skills; Inbox owns starting and resuming. Du
 
 ## Setup record operations
 
-Load this exact `setup-v1` block with Format's canonical `integrity-loader-v1` named-fence loader in a file-written Node driver, passing installed reference paths and tags as separate argv values. Load Format as `format`; replace only the driver's calling code, keeping its loader/imports verbatim. Retain the driver outside prototype/snapshot paths during trials. These operations create only fresh complete projects; Project owns later record replacements.
+Load this exact `setup-v1` block with Format's canonical `integrity-loader-v1` named-fence loader in a file-written Node driver, passing installed reference paths and tags as separate argv values. Load Format as `format`; replace only the driver's calling code, keeping its loader/imports verbatim. Retain the driver outside prototype/snapshot paths during trials. Project owns record replacements. Designer initialization uses Format's existing version lifecycle after the project records are bound.
 
 ```javascript setup-v1
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
@@ -82,7 +86,7 @@ export function initializeProject(root,config,format) {
     const existing=format.readProject(canonical);
     if(existing.config.role!==config.role||existing.config.repository.repositoryId!==config.repository.repositoryId)throw Error('Preserve existing project; choose another root or explicit migration');
     if(existing.mutationIntent)throw Error('Reconcile existing project mutation through Project first');
-    return existing;
+    return initializeStarter(existing,format);
   }
   const state=config.role==='designer'?{schemaVersion:1,assignment:null,startedOrders:{},seenOrderFingerprints:{},versionReservations:[],versionCreationIntent:null,pendingDeliveryIndex:[],localMutationIntent:null}:{schemaVersion:1,seenReleaseFingerprints:{},completedDownloadReceipts:{},pendingOrderCreations:[],localMutationIntent:null};
   format.validateState(state,config);
@@ -93,7 +97,26 @@ export function initializeProject(root,config,format) {
   format.validateState(JSON.parse(readFileSync(join(stage,'state.json'),'utf8')),config);
   if(existsSync(target))throw Error(`Project appeared during setup; preserve staging ${stage}`);
   renameSync(stage,target);
-  return format.readProject(canonical,config.role);
+  return initializeStarter(format.readProject(canonical,config.role),format);
+}
+function initializeStarter(context,format) {
+  if(context.config.role!=='designer')return context;
+  const {root,state}=context;
+  const {versions}=format.inspectVersions(context);
+  let intent=state.versionCreationIntent;
+  if(!intent) {
+    if(versions.length||state.versionReservations.length)return context;
+    intent=format.reserveVersion(context,{mode:'empty'});
+    context=format.readProject(root,'designer');
+  } else if(intent.number!==1||intent.label!=='prototype'||intent.source!==null||intent.previousWorking!==null) {
+    return context;
+  }
+  if(!versions.some(version=>version.number===intent.number)) {
+    format.stageVersion(context);
+    context=format.readProject(root,'designer');
+  }
+  format.finishVersion(context);
+  return format.readProject(root,'designer');
 }
 export function joinPrompt(repository,role,source='paalagain/ditl-workspace') {
   if(!roles.includes(role))throw Error('Invalid joining role');

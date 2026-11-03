@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { integrity } from '../tools/protocol.mjs';
@@ -28,6 +28,26 @@ test('setup creates a bound project for either role and preserves its existing r
     assert.throws(()=>s.initializeProject(root,config,f),/Unsupported/);
     assert.equal(readFileSync(path,'utf8'),'{"schemaVersion":99}');
   }
+});
+
+test('designer onboarding provides a working starter that the next version copies',async()=>{
+  const s=await setup(), f=await integrity();
+  const root=mkdtempSync(join(tmpdir(),'ditl-starter-'));
+  const config=s.projectConfiguration('designer',{id:101,name:'transport',owner:{login:'alice'},private:true,permissions:{push:true}});
+  let context=s.initializeProject(root,config,f);
+  const starter=f.inspectVersions(context).working;
+  assert.equal(starter.number,1);
+  const html=join(root,'versions',starter.folder,'index.html');
+  assert.match(readFileSync(html,'utf8'),/<h1>Prototype<\/h1>/);
+  assert.ok(existsSync(join(root,'versions',starter.folder,'assets')));
+  writeFileSync(html,'<!doctype html><title>Edited prototype</title>');
+  context=s.initializeProject(root,config,f);
+  assert.equal(f.inspectVersions(context).versions.length,1);
+  f.reserveVersion(context);
+  f.stageVersion(f.readProject(root,'designer'));
+  const next=f.finishVersion(f.readProject(root,'designer'));
+  assert.equal(next.number,2);
+  assert.equal(readFileSync(join(root,next.folder,'index.html'),'utf8'),'<!doctype html><title>Edited prototype</title>');
 });
 
 test('either starter can choose a personal account or an observed eligible organisation',async()=>{
