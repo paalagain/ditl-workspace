@@ -1,4 +1,4 @@
-# Root AGENTS.md
+# Designer in the loop workspace
 
 ## External packages
 
@@ -17,3 +17,7 @@ Use the five default triage roles. Before triaging an issue, read `docs/agents/t
 ### Domain docs
 
 Use a single-context layout: root `GLOSSARY.md` and `docs/adr/`. Before exploring the codebase, read `docs/agents/domain.md`.
+
+## Historical version of the project
+
+"C:\Users\PaalA\Documents\develop\DesignerITLcom"

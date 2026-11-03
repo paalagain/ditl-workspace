@@ -10,9 +10,9 @@
     "state": 1
   },
   "revisions": {
-    "project.md": 5,
+    "project.md": 6,
     "format.md": 6,
-    "setup.md": 11,
+    "setup.md": 12,
     "delivery.md": 6,
     "orders.md": 3,
     "versions.md": 4,
@@ -24,9 +24,9 @@
   "sources": {
     "SKILL.md": "c70e705e108e141158b9529c15a54029e9b3c90d338600d51b4932234a8fade6",
     "agents/openai.yaml": "72b3b84e24321ec4822d413acef7b1edbc961eea863f9381014e8e84cc5352d7",
-    "references/project.md": "36b6b8a25d4cac757230815cec004faaed0e102beec5e9542dbfd0c96bf01157",
+    "references/project.md": "b0b73120447f977c72ca381e92a5b92d38a76d540e59b2b72e7035423f45b463",
     "references/format.md": "fefd76cd298c08dcc4a92fcde5246cdb4cab5283243afdd861a2c320cdca71a0",
-    "references/setup.md": "012640ee4d2ddb8d3043f89d48decb9fc0814ee9d8cd47c5786d495ddc819a60",
+    "references/setup.md": "f867c2d7c052e83f4c3e744874c6c94a0c799ae2ad9367904a6678ad0678887b",
     "references/delivery.md": "65e2a570aed79c850a2f2462ba16bceffb1d3f0e6869a4ad538e53766241c107",
     "references/orders.md": "70a51b80d40e6cdcc7de14028845b7e5c6256e5ff97c035d28a4f17ec035cfd2",
     "references/versions.md": "7964aa30045773b694394d20e2144c1e040dd58d6df71cfb16e0e87046847b27",
