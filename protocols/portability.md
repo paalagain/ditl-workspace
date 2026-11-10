@@ -1,14 +1,14 @@
 # Captured prototype portability
 
-Revision: 2
+Revision: 4
 
-Both send modes execute this shared gate through Versions. Use [Format](format.md) for every inventory, safe-path and digest operation. Portability applies to the actual captured bytes. A designer acknowledgment never permits a blocked or unperformed portability check.
+A numbered prototype delivery executes this gate through Versions. Use [Format](format.md) for every inventory, safe-path and digest operation. Portability applies to the actual captured bytes. A designer acknowledgment never permits a blocked or unperformed portability check.
 
 ## Inspect, exercise, decide
 
-1. Run the verbatim snippet below against the captured prototype with the verbatim Format module as its `integrity` argument. Retain its exact JSON report under pending evidence. It requires index.html/assets through canonical inventory and inspects every HTML/CSS/JavaScript/SVG text file, including nested imports, styles, fonts, media, navigation and common load sinks. Broken/escaped/network references are violations. Scanner limitations remain explicit: comments, unusual syntax, generated code, obfuscated loaders and unexercised code cannot be proved safe by regular expressions.
-2. Read every inspected file in full. Resolve computed references, import maps, srcdoc, source/srcset selections, data/blob contents, form/navigation destinations, CSS escapes and script-generated code. Trace all dynamic-load candidates; record the source/candidate ID and concrete evidence resolving its dependencies, or leave it unresolved and blocked. Review all files capable of execution even if an extension is unusual. Unresolved runtime dependencies block publication.
-3. Open the captured `index.html` directly with `file:` execution. In a fresh browser context observe attempted requests across pages, popups, frames and workers; observe WebSocket attempts separately where the browser API does so. Disable service workers/previous cache state. Exercise each requested state, breakpoint/state-dependent source selection and interaction that can load content or navigate. Resolve local fonts/media and verify they actually load. Record browser/version, exact test invocation or retained raw observation path, requested/exercised states, request URLs (including blocked attempts), failures, page errors and omitted necessary checks. A screenshot or static scan alone is insufficient. If the required browser/network capability is unavailable, block.
+1. Run the verbatim snippet below against the captured prototype with the verbatim Format module as its `integrity` argument. Retain its exact JSON report under pending evidence. It requires index.html/assets through canonical inventory and inspects every HTML/CSS/JavaScript/SVG text file, including nested imports, styles, fonts, media, navigation and common load sinks. Broken/escaped/network dependencies are violations. An `href` on an `<a>` or `<area>` element with a `mailto:`, `tel:`, `http:` or `https:` URL is user-initiated navigation. The report records these destinations in `navigationLinks` entries containing `source`, `element` and `reference`. These URLs remain violations in every other dependency sink. Other schemes and protocol-relative navigation remain violations. Scanner limitations remain explicit: comments, unusual syntax, generated code, obfuscated loaders and unexercised code cannot be proved safe by regular expressions.
+2. Read every inspected file in full. Resolve computed references, import maps, srcdoc, source/srcset selections, data/blob contents, form/navigation destinations, CSS escapes and script-generated code. Record navigation links without following them. Trace all dynamic-load candidates; record the source/candidate ID and concrete evidence resolving its dependencies, or leave it unresolved and blocked. Review all files capable of execution even if an extension is unusual. Unresolved runtime dependencies block publication.
+3. Open the captured `index.html` directly with `file:` execution. In a fresh browser context observe attempted requests across pages, popups, frames and workers; observe WebSocket attempts separately where the browser API does so. Disable service workers/previous cache state. Exercise each requested state, breakpoint/state-dependent source selection and interaction that can load content or navigate. Do not follow the recorded navigation links; clicking them is not required for the portability exercise. Any attempted runtime network request still blocks delivery, including requests triggered without following a link. Resolve local fonts/media and verify they actually load. Record browser/version, exact test invocation or retained raw observation path, requested/exercised states, request URLs (including blocked attempts), failures, page errors and omitted necessary checks. A screenshot or static scan alone is insufficient. If the required browser/network capability is unavailable, block.
 4. Re-inventory the capture after inspection and browser execution. Any change invalidates its evidence and decision. Call `decidePortability` on static report and actual runtime evidence. Preserve both and its payload-bound outcome. Only `status: eligible` with no violations, unresolved dependencies, failed necessary checks or network attempts permits either send. Every newly captured/fixed payload needs fresh evidence. Retry of an already packaged transaction uses the retained exact matching evidence and rechecks its hash binding.
 
 A user-repaired version requires a fresh coherent capture and complete portability evidence. Preserve earlier observations and execute every required direct-file, state/dependency and network check.
@@ -27,7 +27,7 @@ const entities=value=>value.replace(/&(?:amp|quot|apos|lt|gt|#(?:x[0-9a-f]+|[0-9
   return code>0&&code<=0x10ffff?String.fromCodePoint(code):'\uFFFD';
 });
 export function inspectPortability(root,integrity) {
-  const captured=integrity.inventory(root), files=new Set(captured.files.map(e=>e.path)), report={schemaVersion:1,payloadSha256:captured.payloadSha256,captureRoot:resolve(root),inspectedFiles:[],dependencies:[],violations:[],dynamicCandidates:[]};
+  const captured=integrity.inventory(root), files=new Set(captured.files.map(e=>e.path)), report={schemaVersion:1,payloadSha256:captured.payloadSha256,captureRoot:resolve(root),inspectedFiles:[],dependencies:[],navigationLinks:[],violations:[],dynamicCandidates:[]};
   const candidate=(source,index,description)=>report.dynamicCandidates.push({id:`${source}:${index}:${report.dynamicCandidates.length+1}`,source,description});
   function dependency(source,value,kind) {
     const reference=entities(value).trim();
@@ -46,7 +46,21 @@ export function inspectPortability(root,integrity) {
     if(!/\.(?:html?|css|[cm]?js|svg)$/i.test(entry.path)) continue;
     const source=entry.path, code=readFileSync(join(root,...source.split('/')),'utf8'); report.inspectedFiles.push(source);
     if(/<base\b/i.test(code)) report.violations.push(`${source}: base URL changes direct-file dependency resolution`);
-    for(const match of code.matchAll(/\b(?:src|href|poster|data|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`=]+))/gi)) dependency(source,match[1]??match[2]??match[3],'HTML reference');
+    const navigationAttributes=new Map();
+    for(const tag of code.matchAll(/<([a-z][a-z0-9:-]*)(?=[\s/>])((?:[^"'<>]|"[^"]*"|'[^']*')*)>/gi)) {
+      const element=tag[1].toLowerCase();
+      if(element!=='a'&&element!=='area') continue;
+      for(const attribute of tag[2].matchAll(/([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`=]+)))?/g)) {
+        if(attribute[1].toLowerCase()!=='href') continue;
+        const reference=entities(attribute[2]??attribute[3]??attribute[4]??'').trim();
+        if(/^(?:mailto|tel|https?):/i.test(reference)) navigationAttributes.set(tag.index+1+tag[1].length+attribute.index,{source,element,reference});
+      }
+    }
+    for(const match of code.matchAll(/\b(?:src|href|poster|data|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`=]+))/gi)) {
+      const navigation=navigationAttributes.get(match.index);
+      if(navigation) report.navigationLinks.push(navigation);
+      else dependency(source,match[1]??match[2]??match[3],'HTML reference');
+    }
     for(const match of code.matchAll(/\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
       const value=match[1]??match[2];
       if(/data:/i.test(value)) candidate(source,match.index,'Review srcset with embedded data');

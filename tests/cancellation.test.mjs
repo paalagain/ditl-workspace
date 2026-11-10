@@ -18,6 +18,35 @@ test('developer cancellation has no tasks and uses durable exact-request identit
   assert.throws(()=>f.createOrderRequest({repositoryId:101,title:'Bad',goal:'Cancel',tasks:[{ordinal:1,text:'New work'}],cancelsOrderNumber:7}));
 });
 
+test('cancellation creation permits only a completely observed open work order before any POST',async()=>{
+  const f=await integrity(),{issues}=await fixture();
+  const saved=f.createOrderRequest({repositoryId:101,title:'Cancel',goal:'Withdraw checkout',tasks:[],cancelsOrderNumber:7});
+  const target=issues[0];
+  assert.equal(f.reconcileOrderRequest(saved,[[target]],true),null,'An open target allows the first create');
+  for(const state_reason of ['completed','not_planned','duplicate',null,'future-reason']) {
+    let posts=0;
+    assert.throws(()=>{f.reconcileOrderRequest(saved,[[{...target,state:'closed',state_reason}]],true);posts++;},/already closed.*follow-up order/i);
+    assert.equal(posts,0,'Refusal precedes the remote create boundary');
+  }
+  for(const [pages,complete] of [
+    [[target],false],
+    [[],true],
+    [[{...target,state:'unknown'}],true],
+    [[{number:7,state:'open',body:target.body}],true],
+    [[{...target,state_reason:'unknown'}],true],
+    [[{...target,body:'Ordinary issue'}],true],
+    [[{...target,pull_request:{url:'pull/7'}}],true],
+    [[{...issues[1],number:7}],true],
+    [[{...target,body:target.body+target.body}],true],
+  ]) {
+    let posts=0;
+    assert.throws(()=>{f.reconcileOrderRequest(saved,[pages],complete);posts++;});
+    assert.equal(posts,0);
+  }
+  // Resuming an already-created request still reconciles its identity after closure.
+  assert.equal(f.reconcileOrderRequest({...saved,submissionAttempted:true},[[{...target,state:'closed',state_reason:'completed'},{...issues[1],body:saved.intendedBody}]],true),8);
+});
+
 test('observed cancellation reconciles actual closures and preserves a later activation and local bytes',async()=>{
   const {f,root,issues}=await fixture(),api=await cancellation(),design=readFileSync(join(root,'versions/design.current.v1/index.html'));
   const plans=api.observe(root,[issues],[[]],{complete:true});assert.equal(plans.length,1);

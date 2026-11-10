@@ -1,12 +1,14 @@
 # Project setup
 
-Revision: 12
+Revision: 13
 
 Use this reference only after a participant explicitly requests start, join or update. Setup is a pasted prompt, separate from entering work through designer Inbox. Read [Project](project.md) and execute [Format](format.md)'s `integrity-v1` block before touching project records. Work only in the explicitly opened local project root. Keep the product repository and transport separate: no product-code access, transport clone, Git initialization, source push or remote changes in the project folder are needed.
 
 ## Inspect and install
 
 1. Ask for the missing role (`designer` or `developer`). If the participant has not already selected a specific root, identify the active project or session working directory using Project's root-selection rules, show its full path, and ask whether to use that folder or another one. If the current folder cannot be determined unambiguously, ask for a path. Treat a confirmed current folder or a participant-specified alternative as the selected root; do not proceed on a proposed default without an answer. Inspect `.designeritl` there before any remote change. If complete configuration exists, validate with `readProject`, reconcile its existing mutation intent through Project, and retain its settings and state. Unknown, partial, conflicting or linked records stop setup with their evidence preserved. A different role or repository needs another local project root or an explicit future migration; rerunning setup cannot rebind it.
+
+   For first-time designer setup, explain that setup watches the private transport by default so GitHub can email the designer about work orders and other activity. Offer “skip watching” with the next setup question and wait for the answer. If the designer has supplied all setup answers, treat the watch choice as supplied only when they separately chose to use the default or skip. Otherwise, ask whether to continue with the default or skip. Retain the choice for retries of this setup.
 2. Observe `node --version`, `git --version` and `gh --version` directly through the existing shell. If Node is absent or below **22.20**, supply it first; the setup/Format snippets and npm installer cannot bootstrap a missing Node runtime. Once supported Node runs, pass trimmed observed outputs (null for a missing/failed command) to `missingPrerequisites` below and supply the remaining prerequisites. On Windows with WinGet, verify package identities with `winget show --id OpenJS.NodeJS.LTS --exact`, `Git.Git`, and `GitHub.cli`, then install only missing/incompatible prerequisites with `winget install --id ID --exact --source winget --silent --accept-package-agreements --accept-source-agreements`. Reopen/refresh the shell's PATH as required and rerun the actual version checks. On macOS with Homebrew use `brew install node git gh` for missing packages and `brew upgrade node` for an incompatible Node. If Homebrew is missing, use its official installer at `https://brew.sh`, reporting any required human password/developer-tools step. Without a supported package manager, guide and open the official installers: `https://nodejs.org/en/download`, `https://git-scm.com/downloads`, `https://cli.github.com/`. Linux uses the distribution's supported Git/Node installer and GitHub CLI's official `https://github.com/cli/cli/blob/trunk/docs/install_linux.md`; verify the resulting Node minimum. A launch, download or installer exit alone never proves the prerequisite exists. Human OS elevation or installer dialogs remain explicit human steps. Stop at the missing prerequisite, retain observed progress, and continue from verification on retry.
 3. Set `DISABLE_TELEMETRY=1` for every skills-installer process (`$env:DISABLE_TELEMETRY='1'` in PowerShell; `export DISABLE_TELEMETRY=1` in POSIX shells). Use a **published Git/GitHub distribution source** containing materialized `skills/NAME/SKILL.md`, not local `dist/` or an unbuilt checkout. The published source is `paalagain/ditl-workspace`; a maintainer may supply a dedicated distribution fixture for testing. First list with `npx --yes skills@1.7.4 add SOURCE --list`. Require all four designer names (`inbox new-version send send-final`) or both developer names (`inbox order`), with exactly one discoverable copy of each name. An unpublished or incomplete source stops installation; do not substitute stub workflows or claim successful setup.
 4. Retain the agent platforms and scope already chosen through the full installer. Locate its installed inbox skill through the current agent's skill metadata and inspect each selected platform's role bundles before mutation. If they are complete and verified, reuse them. For missing skills, offer Vercel's native platform picker; for agent-driven noninteractive installation, ask for the platform IDs and pass those exact IDs as `--agent PLATFORM_IDS`. Prefer project scope for a new local project; global scope is an explicit participant choice. Foreign skills or locally changed bundles need a different root or explicit permission to replace those exact files. Preserve a copy of an authorized existing install outside the managed paths before updating. Install only the selected role, using the selected platforms rather than adding Codex or Claude Code implicitly:
@@ -25,13 +27,39 @@ Use this reference only after a participant explicitly requests start, join or u
 6. For **either** starter role, offer the authenticated personal account and all eligible organisations together, with no role-dependent preference. Fetch `gh api --hostname github.com --paginate --slurp 'user/memberships/orgs?state=active&per_page=100'`, then inspect each organisation with `gh api --hostname github.com orgs/ORG`. Use `eligibleOwners` with the flattened complete membership pages and observed organisation records. Active admins can create; active members need observed creation permission and private-repository policy (`members_can_create_private_repositories`). Unknown/denied eligibility is disclosed, not assumed. A missing scope or SSO approval is an explicit authentication/organisation step. Ask which eligible owner, repository name, and partner GitHub username to use before creating anything; validate these as data, never interpolated executable shell text.
 7. Record the confirmed intended `OWNER/NAME` and role locally in the conversation/retained setup progress. Inspect that exact repo first: a known not-found permits `gh repo create OWNER/NAME --private --add-readme --description 'Designer in the loop private transport'`; failed/unknown access is not proof of absence. Do not use `--clone`, `--source`, `--remote` or `--push`. On lost response, inspect the **same** repo instead of choosing another name. An existing repo must be explicitly identified by the participant as this setup's transport before reuse. Read `gh api --hostname github.com repos/OWNER/NAME`; verify its stable ID, owner/name, `private:true`, issue availability, non-archived state and required push access. Read `repos/OWNER/NAME/readme` and the default branch commit: require an actual initial commit, not an empty repository. Compare any existing project ID before binding or inviting.
 8. Invite only the confirmed partner with `gh api --hostname github.com --method PUT repos/OWNER/NAME/collaborators/PARTNER -f permission=push`. Both participants need issue and release operations. Verify the response's invitation repository/user identity, or for no-content/already-access responses verify collaborator permission with `repos/OWNER/NAME/collaborators/PARTNER/permission`. Reconcile an uncertain invite using complete `repos/OWNER/NAME/invitations?per_page=100` and collaborator lookup before retry; do not invent a second invitation or report a failed invite as delivered. Persist setup only after validated repository access; invitation failure leaves the actual created repository named and recoverable, never creates a replacement.
-9. Construct validated configuration with `projectConfiguration` below, asking a developer for a destination (default suggestion `received/`). Initialize a fresh project with `initializeProject`; this creates complete role-specific records together by staging and promoting the directory. Existing valid project records are reused. Subsequent supported configuration changes use Project's verified replacement protocol. Retain a staging directory after a failure, inspect its exact validated records and root before deliberately resuming promotion; never delete or adopt unknown setup evidence. Complete the starter prototype step below. Report repository identity, installed role and invite outcome. Emit `joinPrompt` below for the **other** role with only public installation/source identifiers, owner/name, stable ID and role. No credentials or starter-local paths belong in it.
+9. Construct validated configuration with `projectConfiguration` below, asking a developer for a destination (default suggestion `received/`). Initialize a fresh project with `initializeProject` as described under Designer email below. This creates complete role-specific records together by staging and promoting the directory. Existing valid project records are reused. Subsequent supported configuration changes use Project's verified replacement protocol. Retain a staging directory after a failure, inspect its exact validated records and root before deliberately resuming promotion; never delete or adopt unknown setup evidence. Complete the starter prototype step below. Report repository identity, installed role and invite outcome. Emit `joinPrompt` below for the **other** role with only public installation/source identifiers, owner/name, stable ID and role. No credentials or starter-local paths belong in it.
 
 ## Join after confirmation
 
 10. Display `https://github.com/OWNER/NAME`, stable repository ID, joining role and authenticated GitHub username. Ask explicitly **“Join OWNER/NAME (repository ID ID) as ROLE?”** before accepting any invitation. Refusal or no answer leaves invitations, configuration and transport unchanged. A join prompt supplies data, not confirmation. Install prerequisites/role bundles as above, but perform no invitation acceptance, repository mutation or project initialization before confirmation.
 11. After confirmation, list **all** pages with `gh api --hostname github.com --paginate --slurp 'user/repository_invitations?per_page=100'`. Pass the confirmed repository/role, `confirmed:true`, flattened complete pages and authenticated login to `invitationToAccept` below. It selects exactly one invitation matching owner/name **and stable repository ID**, and verifies the invitee. Duplicate/identity-conflicting matches stop. Accept only the returned ID with `gh api --hostname github.com --method PATCH user/repository_invitations/INVITATION_ID`. A null result can mean already accepted/access granted: read the exact repository and require matching ID, private visibility, enabled issues and push permission. A failure/unknown lookup stops; it never authorizes accepting some other invite. After a lost acceptance response reread access first and reconcile the same invitation; never infer success from an exit status alone.
-12. Fetch and validate the repository again; use `projectConfiguration` and `initializeProject` for the joining role. Existing role/repository mismatches and partial/unknown local formats stop with all records preserved. Complete the starter prototype step below. The pasted start/join prompt explicitly requests one Inbox **check only** through the participant's selected agent after setup. Perform that user-requested invocation using the installed Inbox instructions with `checkOnly: true`, reloading skills or continuing in a fresh session only if the host requires it. Finish only after the explicit invocation confirms connectivity to the bound ID, and report any unfinished invitation/install step honestly. This authorization is for that one observational check; it never activates an order or creates a prototype. Future Inbox calls require another explicit request.
+12. Fetch and validate the repository again; use `projectConfiguration` and `initializeProject` for the joining role as described under Designer email below. Existing role/repository mismatches and partial/unknown local formats stop with all records preserved. Complete the starter prototype step below. The pasted start/join prompt explicitly requests one Inbox **check only** through the participant's selected agent after setup. Perform that user-requested invocation using the installed Inbox instructions with `checkOnly: true`, reloading skills or continuing in a fresh session only if the host requires it. Finish only after the explicit invocation confirms connectivity to the bound ID, and report any unfinished invitation/install step honestly. This authorization is for that one observational check; it never activates an order or creates a prototype. Future Inbox calls require another explicit request.
+
+### Designer email
+
+Use the same initialization step when a designer starts or joins. After verifying the exact private transport and GitHub account, pass the authenticated login and retained watch choice to the driver. Use `enable` unless the designer said to skip. For developer setup, call `initializeProject(root, config, format)` without watch options.
+
+```javascript
+import { spawnSync } from 'node:child_process';
+
+const context = setup.initializeProject(root, config, format, {
+  watching: {
+    login,
+    choice,
+    runGh: args => spawnSync('gh', args, {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 15000,
+    }),
+  },
+});
+```
+
+Use the installed `setup-v1` block as `setup` in this driver. In a controlled trial, use the supplied GitHub CLI substitute for `runGh`. Let the block read and verify the subscription. If GitHub reports a missing subscription for this authenticated account and transport, the block tries one write and reads the subscription again. A private repository can also return 404 when access fails. The block requires GitHub's subscription-specific 404, the OAuth `repo` scope, and verified access before it attempts a write.
+
+Read `context.watching` in the setup summary. For `watching`, report that GitHub confirms the designer is watching this transport. For `preserved`, report the existing subscription setting, including whether GitHub is ignoring the repository. For `skipped`, report the designer's choice. For `unconfirmed`, report whether setup could not establish access, subscription state, or the result of the write. Continue onboarding in each case. A completed local project has no watch step on a setup rerun or skill update. If setup stopped before local promotion, verify the retained staging evidence, then retry the same root, repository and watch choice. The retry reads the subscription before deciding whether a write is needed.
+
+Report email delivery separately as unverified. Ask the designer to check their regular inbox when the developer sends the first real work order. GitHub sends email for watched activity according to the designer's account preferences. The designer can run `inbox` in the matching local project for the issue number from the email, or use `inbox` to find the order if no email arrives. Use the existing GitHub CLI connection throughout onboarding. The designer can finish without opening the transport page or notification settings. The existing Inbox connectivity check verifies access to the transport.
 
 ### Starter prototype
 
@@ -50,7 +78,7 @@ The designer role now contains four skills; Inbox owns starting and resuming. Du
 Load this exact `setup-v1` block with Format's canonical `integrity-loader-v1` named-fence loader in a file-written Node driver, passing installed reference paths and tags as separate argv values. Load Format as `format`; replace only the driver's calling code, keeping its loader/imports verbatim. Retain the driver outside prototype/snapshot paths during trials. Project owns record replacements. Designer initialization uses Format's existing version lifecycle after the project records are bound.
 
 ```javascript setup-v1
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 const roles=['designer','developer'];
@@ -77,12 +105,87 @@ export function projectConfiguration(role,observed,deliveryDestination='received
   const config={schemaVersion:2,role,repository:{repositoryId:observed.id,owner:observed.owner.login,name:observed.name}};
   return role==='designer'?config:{...config,deliveryDestination};
 }
-export function initializeProject(root,config,format) {
+
+function readSetupGitHub(runGh,...args) {
+  try {
+    const result=runGh(['api','--hostname','github.com','--include',...args]);
+    if(typeof result?.stdout!=='string')return null;
+    const boundary=/\r?\n\r?\n/.exec(result.stdout);
+    if(!boundary)return null;
+    const lines=result.stdout.slice(0,boundary.index).split(/\r?\n/);
+    const status=Number(lines.shift().match(/^HTTP\/[\d.]+ (\d{3})(?: |$)/)?.[1]);
+    if(![200,404].includes(status)||result.status!==(status===200?0:1))return null;
+    if(lines.some(line=>/^x-github-sso:/i.test(line)))return null;
+    const scopes=lines.find(line=>/^x-oauth-scopes:/i.test(line))?.split(':')[1].split(',').map(scope=>scope.trim())??[];
+    const body=JSON.parse(result.stdout.slice(boundary.index+boundary[0].length));
+    return {status,body,repoScope:scopes.includes('repo')};
+  } catch {
+    return null;
+  }
+}
+function setupWatch(repository,watching,assertFreshProject) {
+  const {login,choice,runGh}=watching;
+  if(choice==='skip')return {status:'skipped'};
+  const unconfirmed=reason=>({status:'unconfirmed',reason});
+  if(choice!=='enable'||!handle(login)||typeof runGh!=='function')return unconfirmed('setup');
+  const repo='repos/'+repository.owner+'/'+repository.name;
+  const subscription=repo+'/subscription';
+  const repositoryUrl='https://api.github.com/'+repo;
+  const verifyAccess=()=>{
+    const user=readSetupGitHub(runGh,'user');
+    if(user?.status!==200||!Number.isSafeInteger(user.body?.id)||user.body.id<1||
+      !handle(user.body.login)||user.body.login.toLowerCase()!==login.toLowerCase())return null;
+    const observed=readSetupGitHub(runGh,repo);
+    if(observed?.status!==200)return null;
+    try {
+      const actual=projectConfiguration('designer',observed.body).repository;
+      if(actual.repositoryId!==repository.repositoryId||
+        actual.owner.toLowerCase()!==repository.owner.toLowerCase()||
+        actual.name.toLowerCase()!==repository.name.toLowerCase())return null;
+      return user.body.id;
+    } catch {
+      return null;
+    }
+  };
+  const observedWatch=response=>{
+    const {status,body}=response??{};
+    if(status!==200||typeof body?.subscribed!=='boolean'||typeof body.ignored!=='boolean'||
+      typeof body.repository_url!=='string'||body.repository_url.toLowerCase()!==repositoryUrl.toLowerCase())return null;
+    const {subscribed,ignored}=body;
+    return {status:subscribed&&!ignored?'watching':'preserved',subscribed,ignored};
+  };
+  const actor=verifyAccess();
+  if(actor===null)return unconfirmed('access');
+  const current=readSetupGitHub(runGh,subscription);
+  const existing=observedWatch(current);
+  if(existing)return existing;
+  if(current?.status!==404||!current.repoScope||current.body?.message!=='Not Found'||
+    typeof current.body.documentation_url!=='string'||
+    !/^https:\/\/docs\.github\.com\/(?:en\/)?rest\/activity\/watching#get-a-repository-subscription$/.test(current.body.documentation_url))return unconfirmed('subscription');
+  if(verifyAccess()!==actor)return unconfirmed('access');
+  assertFreshProject();
+  try {
+    runGh(['api','--hostname','github.com','--include','--method','PUT',subscription,'-F','subscribed=true','-F','ignored=false']);
+  } catch {}
+  if(verifyAccess()!==actor)return unconfirmed('access');
+  return observedWatch(readSetupGitHub(runGh,subscription))??unconfirmed('readback');
+}
+function projectRecordsExist(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch(error) {
+    if(error.code==='ENOENT')return false;
+    throw error;
+  }
+}
+
+export function initializeProject(root,config,format,{watching}={}) {
   format.validateConfig(config);
   const base=resolve(root);
   if(!lstatSync(base).isDirectory()||lstatSync(base).isSymbolicLink())throw Error('Explicit regular local project root required');
   const canonical=realpathSync(base), target=join(canonical,'.designeritl');
-  if(existsSync(target)) {
+  if(projectRecordsExist(target)) {
     const existing=format.readProject(canonical);
     if(existing.config.role!==config.role||existing.config.repository.repositoryId!==config.repository.repositoryId)throw Error('Preserve existing project; choose another root or explicit migration');
     if(existing.mutationIntent)throw Error('Reconcile existing project mutation through Project first');
@@ -95,9 +198,15 @@ export function initializeProject(root,config,format) {
   for(const [name,value] of [['config',config],['state',state]])writeFileSync(join(stage,`${name}.json`),JSON.stringify(value,null,2)+'\n',{flag:'wx',flush:true});
   format.validateConfig(JSON.parse(readFileSync(join(stage,'config.json'),'utf8')));
   format.validateState(JSON.parse(readFileSync(join(stage,'state.json'),'utf8')),config);
-  if(existsSync(target))throw Error(`Project appeared during setup; preserve staging ${stage}`);
+  const assertFreshProject=()=>{
+    if(projectRecordsExist(target))throw Error(`Project appeared during setup; preserve staging ${stage}`);
+  };
+  assertFreshProject();
+  const watch=config.role==='designer'&&watching?setupWatch(config.repository,watching,assertFreshProject):null;
+  assertFreshProject();
   renameSync(stage,target);
-  return initializeStarter(format.readProject(canonical,config.role),format);
+  const context=initializeStarter(format.readProject(canonical,config.role),format);
+  return watch?{...context,watching:watch}:context;
 }
 function initializeStarter(context,format) {
   if(context.config.role!=='designer')return context;
@@ -121,7 +230,8 @@ function initializeStarter(context,format) {
 export function joinPrompt(repository,role,source='paalagain/ditl-workspace') {
   if(!roles.includes(role))throw Error('Invalid joining role');
   if(!Number.isSafeInteger(repository?.repositoryId)||repository.repositoryId<1||!handle(repository.owner)||!repoName(repository.name)||!/^[-a-zA-Z0-9_.]+\/[-a-zA-Z0-9_.]+$/.test(source))throw Error('Invalid secret-free join identity/source');
-  return `Join Designer in the loop as ${role} at https://github.com/${repository.owner}/${repository.name} (repository ID ${repository.repositoryId}). Show me the current folder and ask whether to use it as the local project root or choose another. Follow the published Project setup reference at https://github.com/${source}/blob/HEAD/protocols/setup.md, retain my selected agent platforms and scope, install only my role from ${source} with telemetry disabled and --copy if missing, and display this exact repository and role for my confirmation before accepting its invitation. Keep authentication in GitHub CLI via human browser login. Preserve existing project records. After validated setup, I explicitly request one inbox check-only invocation using my selected agent's skill invocation and the installed inbox instructions to confirm connectivity. No ongoing inbox checks are requested.`;
+  const watchNotice=role==='designer'?' On first-time setup, watch this private transport through my existing GitHub CLI session so GitHub can email me about work orders. Tell me I can say skip watching before continuing. Report watching separately from email delivery.':'';
+  return `Join Designer in the loop as ${role} at https://github.com/${repository.owner}/${repository.name} (repository ID ${repository.repositoryId}). Show me the current folder and ask whether to use it as the local project root or choose another. Follow the published Project setup reference at https://github.com/${source}/blob/HEAD/protocols/setup.md, retain my selected agent platforms and scope, install only my role from ${source} with telemetry disabled and --copy if missing, and display this exact repository and role for my confirmation before accepting its invitation. Keep authentication in GitHub CLI via human browser login. Preserve existing project records.${watchNotice} After validated setup, I explicitly request one inbox check-only invocation using my selected agent's skill invocation and the installed inbox instructions to confirm connectivity. No ongoing inbox checks are requested.`;
 }
 export function invitationToAccept(repository,role,confirmed,invitations,login) {
   joinPrompt(repository,role);

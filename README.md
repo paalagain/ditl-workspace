@@ -1,6 +1,6 @@
 # Designer in the loop
 
-Explicitly invoked Agent Skills exchange work orders and portable HTML prototype deliveries through a separate private GitHub repository. The designer keeps accumulated numbered versions and chooses what to send. Final delivery reassesses the agreed work and records the designer's completion decision. Developer inbox verifies each delivery and preserves its history.
+Explicitly invoked Agent Skills exchange work orders, files and portable prototypes through a separate private GitHub repository. The designer chooses which files, folders or numbered version to send. Final delivery reassesses the agreed work and records the designer's completion decision. Developer Inbox verifies each delivery and preserves its history.
 
 ## Get started by pasting a prompt
 
@@ -18,7 +18,7 @@ Choose the project folder and role, then select your agent platforms and install
 | --- | --- | --- | --- |
 | Collaboration | `inbox` | Both | Start/resume incoming work, check only when requested, or receive verified deliveries. |
 | Collaboration | `order` | Developer | Create a work order, linked feedback or cancellation request. |
-| Collaboration | `send` | Designer | Deliver a chosen portable version as unfinished work. |
+| Collaboration | `send` | Designer | Deliver chosen files, folders or a numbered prototype as work in progress. |
 | Collaboration | `send-final` | Designer | Reassess agreed tasks, record completion, deliver and close the order. |
 | Toolbox | `new-version` | Designer | Create a numbered working version by copying, importing or starting empty. |
 
@@ -28,7 +28,7 @@ Use the full installation command above to choose **Designer** or **Developer** 
 
 For advanced, skill-only installation, `npx skills add paalagain/ditl-workspace` shows selectable, collapsible **Collaboration Skills** and **Toolbox Skills** groups from the repository's [category manifest](.claude-plugin/marketplace.json). This command skips the role choice and does not create the project's `HUMAN-README.md`. If you used it and need the complete installation, run `npx --yes github:paalagain/ditl-workspace` and select the same project folder.
 
-Use `/name` in Claude Code and `$name` in Codex. Each action requires explicit invocation. Design edits happen in the designer's prototype files. Every delivery opens directly from its own files with local assets, no build step and no runtime network dependencies.
+Use `/name` in Claude Code and `$name` in Codex. Each action requires explicit invocation. For a first pass, try `/send screenshots/ notes.md` or `$send screenshots/ notes.md`. A numbered prototype delivery opens directly from its own files, with no build step or runtime network dependencies.
 
 Designer Inbox continues the eligible active order or starts the only available order. When several choices remain, it asks once. `inbox check only` reviews observations without starting work. A first work entry creates an empty prototype when no versions exist. Missing project configuration asks for the project folder separately from the understood order. Existing installations should follow [the role update and legacy Start migration](protocols/setup.md#retire-the-former-start-skill-during-an-update).
 
@@ -54,7 +54,7 @@ npm test
 
 `build` creates independent role bundles under ignored `dist/`. `build:source` creates the tracked Git-discoverable distribution under `skills/`: five unique names, four designer actions and two developer actions. Each bundle has its complete transitive reference closure, the human guide and its installer helper, hashes, reference revisions and explicit-only metadata for both hosts. Canonical files use UTF-8 and LF. Regenerate and stage the distribution whenever canonical instructions change. The generator refuses stale or foreign output files; regenerate into a clean directory when the expected closure shrinks.
 
-Configuration and manifests use format version 2. State, descriptors and pending records use version 1; final decisions use version 2. Preserve existing projects and packages with unsupported formats. Reconcile pending work under its producing installation before a deliberate upgrade; installing skills never resets records or rewrites historical ZIPs. Both participants must use compatible delivery formats.
+Configuration, prototype manifests and final decisions use version 2. File deliveries use manifest version 3. State, descriptors and pending records use version 1. Update the developer's Inbox skill before sending the first file delivery. Updated skills also read existing prototype deliveries and pending records. Installing skills preserves project records and historical ZIPs.
 
 ## Installed-host trials
 

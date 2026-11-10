@@ -1,1 +1,1 @@
-{"schemaVersion":1,"name":"send","roles":["designer"],"description":"Share a prototype version as unfinished work while keeping its order open.","references":["project.md","delivery.md","sending.md"]}
+{"schemaVersion":1,"name":"send","roles":["designer"],"description":"DITL send (explicit invocation only): work in progress.","references":["project.md","delivery.md","sending.md"]}

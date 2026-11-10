@@ -27,7 +27,7 @@ The prototype version selected for ordinary design edits. Creating a new version
 _Avoid_: Active order (the current assignment, rather than the design being edited)
 
 **Portability**:
-The property of a prototype version that opens directly from its own files, with no build step and nothing loaded from the network. Every delivery must have it.
+The property of a prototype version that opens directly from its own files, with no build step and nothing loaded from the network. Every delivery of a numbered prototype version must have it.
 
 ### Work orders
 
@@ -57,11 +57,11 @@ _Avoid_: Cancelled order, developer acceptance
 ### Delivery
 
 **Delivery**:
-A prototype version sent to the developer in response to exactly one work order, together with information identifying that order and whether the delivery is final.
+A numbered prototype version or a selection of files and folders sent to the developer in response to exactly one work order, together with information identifying that order and whether the delivery is final.
 _Avoid_: Prototype version (a version can exist without being delivered)
 
 **Send**:
-A delivery of a version as it stands, which the designer does not consider complete. It leaves the work order open.
+A delivery of chosen files, folders or a numbered prototype version as work in progress. It leaves the work order open.
 _Avoid_: Final delivery
 
 **Final delivery**:

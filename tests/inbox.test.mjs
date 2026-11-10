@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
+import fs from 'node:fs';
+import {existsSync,mkdtempSync,mkdirSync,readdirSync,writeFileSync,readFileSync} from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {build} from '../tools/bundle.mjs';
@@ -29,14 +31,72 @@ test('installed Inbox verifies exact installed bytes before repairing a missing 
   assert.throws(()=>api.verifyInstalled(destination,observation,tree.entries),/inventory|structure/i);
 });
 
+test('verified receive removes only its own staging after the receipt is stored',async()=>{
+  const {root,api,packed,release,assets}=await fixture(), observation=api.observeRelease(release,123,assets),destinationRoot=join(root,'received'),receipts={};
+  const stagingRoot=join(destinationRoot,'.designeritl-staging'),other=join(stagingRoot,'other-operation');
+  mkdirSync(other,{recursive:true});writeFileSync(join(other,'delivery.zip'),'retained recovery bytes');
+  let operation;
+  const result=await api.receiveOne({observation,destinationRoot,receipts,
+    download:async path=>{operation=join(path,'..');writeFileSync(path,packed.zip);},refresh:async()=>observation,
+    persistReceipt:async(key,receipt)=>{
+      assert.ok(existsSync(join(operation,'delivery.zip')));
+      assert.equal(readFileSync(join(receipt.destination,'design.v1/index.html'),'utf8'),'abc');
+      receipts[key]=receipt;
+    }});
+  assert.equal(result.status,'installed');assert.equal(Object.keys(receipts).length,1);
+  assert.equal(existsSync(operation),false);
+  assert.deepEqual(readdirSync(stagingRoot),['other-operation']);
+  assert.equal(readFileSync(join(other,'delivery.zip'),'utf8'),'retained recovery bytes');
+});
+
+test('failed download, verification and receipt persistence retain their own staging',async()=>{
+  const failures={download:/download interrupted/,archive:/Unsupported ZIP trailer/,installed:/Installed manifest hash divergence/,refresh:/refresh interrupted/,receipt:/receipt interrupted/};
+  for(const [phase,expected] of Object.entries(failures)) {
+    const {root,api,packed,release,assets}=await fixture(), observation=api.observeRelease(release,123,assets),destinationRoot=join(root,'received'),receipts={};
+    let zipPath,refreshes=0;
+    await assert.rejects(()=>api.receiveOne({observation,destinationRoot,receipts,
+      download:async path=>{zipPath=path;writeFileSync(path,phase==='archive'?packed.zip.subarray(0,70):packed.zip);if(phase==='download')throw Error('download interrupted');},
+      refresh:async()=>{
+        refreshes++;
+        if(phase==='installed'&&refreshes===1) {
+          const target=join(destinationRoot,'order-7',packed.descriptor.deliveryId);
+          mkdirSync(target,{recursive:true});writeFileSync(join(target,'manifest.json'),'divergent install');
+        }
+        if(phase==='refresh'&&refreshes===2)throw Error('refresh interrupted');
+        return observation;
+      },persistReceipt:async()=>{throw Error('receipt interrupted');}}),expected,phase);
+    assert.ok(existsSync(zipPath),phase);
+    assert.deepEqual(receipts,{},phase);
+  }
+});
+
+test('staging cleanup failure reports retained staging without failing the verified install',async(t)=>{
+  const {root,api,packed,release,assets}=await fixture(), observation=api.observeRelease(release,123,assets),destinationRoot=join(root,'received'),receipts={};
+  let operation;
+  const remove=fs.rmSync;
+  t.mock.method(fs,'rmSync',(path,options)=>{if(path===operation)throw Error('cleanup blocked');return remove(path,options);});
+  syncBuiltinESMExports();
+  try {
+    const result=await api.receiveOne({observation,destinationRoot,receipts,
+      download:async path=>{operation=join(path,'..');writeFileSync(path,packed.zip);},refresh:async()=>observation,
+      persistReceipt:async(key,receipt)=>{receipts[key]=receipt;}});
+    assert.equal(result.status,'installed');assert.equal(Object.keys(receipts).length,1);
+    assert.equal(result.staging,operation);assert.match(result.cleanupWarning,/cleanup blocked/);
+    assert.ok(existsSync(join(operation,'delivery.zip')));
+    assert.equal(readFileSync(join(result.destination,'design.v1/index.html'),'utf8'),'abc');
+  } finally {t.mock.restoreAll();syncBuiltinESMExports();}
+});
+
 test('interrupted receipt persistence repairs installed delivery without replacing files or older receipts',async()=>{
   const {root,api,packed,release,assets}=await fixture(), observation=api.observeRelease(release,123,assets), destinationRoot=join(root,'received'), receipts={};
   const effects={observation,destinationRoot,receipts,download:async path=>writeFileSync(path,packed.zip),refresh:async()=>observation,persistReceipt:async()=>{throw Error('receipt write interrupted');}};
   await assert.rejects(()=>api.receiveOne(effects),/receipt write interrupted/);
+  const retained=readdirSync(join(destinationRoot,'.designeritl-staging'));
   const target=join(destinationRoot,'order-7',packed.descriptor.deliveryId), installed=readFileSync(join(target,'design.v1/index.html'));
   assert.deepEqual(receipts,{});
   const result=await api.receiveOne({...effects,persistReceipt:async(key,receipt)=>{receipts[key]=receipt;}});
   assert.equal(result.status,'repaired');assert.equal(Object.keys(receipts).length,1);
+  assert.deepEqual(readdirSync(join(destinationRoot,'.designeritl-staging')),retained);
   assert.ok(installed.equals(readFileSync(join(target,'design.v1/index.html'))));
   const original=JSON.stringify(receipts);
   const repeat=await api.receiveOne({...effects,persistReceipt:async()=>assert.fail('repeat must retain receipt')});

@@ -1,5 +1,5 @@
 interface:
   display_name: "send-final"
-  short_description: "Deliver a selected prototype and complete its work order."
+  short_description: "DITL send-final (explicit invocation only): final deliveries."
 policy:
   allow_implicit_invocation: false

@@ -1,1 +1,1 @@
-{"schemaVersion":1,"name":"order","roles":["developer"],"description":"Create a numbered work order or linked feedback, recovering an interrupted request.","references":["project.md","orders-create.md"]}
+{"schemaVersion":1,"name":"order","roles":["developer"],"description":"DITL order (explicit invocation only): work orders and feedback.","references":["project.md","orders-create.md"]}

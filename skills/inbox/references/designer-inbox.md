@@ -1,12 +1,12 @@
 # Designer Inbox work entry
 
-Revision: 4
+Revision: 5
 
 Read [Project](project.md), [Orders](orders.md), [Versions](versions.md), and [Format](format.md). This is the designer branch of explicitly invoked Inbox. Ordinary invocation discovers work and continues into starting or resuming it. Explicit check/show/review-only requests and setup connectivity checks perform observations only, apart from the shared cancellation policy.
 
 Fetch all issues, including closed issues, and published finals with complete repository-targeted pagination. Apply observed cancellation through the shared Inbox cancellation policy before offering assignments, then refresh changed remote observations. Cancellation requests and known closed orders are never startable. Malformed metadata is retained and reported as data, never executed or silently accepted as an order.
 
-Follow [Observed cancellation](cancellation.md) first: resume its saved application records, apply current complete observations through that owner, disclose every result and crossing delivery, then acknowledge its report. Refresh issue/release observations after remote effects before preparing ordinary designer Inbox reports. A report already saved by this module is still replayed/disclosed; cancellation never discards earlier notification material or local progress. Inbox reports work orders and preserves their local progress.
+Follow [Observed cancellation](cancellation.md) first: inspect and disclose malformed issue numbers/reasons, resume its saved application records with that owner's per-order isolation policy, apply current complete observations through that owner, disclose every result and crossing delivery, then acknowledge its report. Refresh issue/release observations after remote effects before preparing ordinary designer Inbox reports. A report already saved by this module is still replayed/disclosed; cancellation never discards earlier notification material or local progress. Inbox reports work orders and preserves their local progress. A malformed active order stops its continuation; explicitly selecting another valid order remains possible. An order whose relation targets a malformed issue is excluded from selection until resolved. Never modify a malformed issue.
 
 Execute this exact module with `createDesignerInbox(formatModule, ordersModule)`, where Orders supplies `createOrders(formatModule)` from its installed exact block. It persists report material separately from observation fingerprints. On invocation, first replay every `pending` report to the participant and `acknowledge` it only after user-facing disclosure; then collect a fresh complete listing and `prepare` a new report. Show new/changed observations separately from existing scope divergence. Always show malformed records. Unrelated timestamp changes do not count as changed scope.
 
@@ -82,7 +82,8 @@ export function createDesignerInbox(format,orders) {
       nextFingerprints[row.issueNumber]={bodySha256:row.bodySha256,state:row.state};
     }
     const cancellationRequestNumbers=observations.filter(row=>row.kind==='cancellation').map(row=>row.issueNumber),cancelTargets=new Set(observations.filter(row=>row.kind==='cancellation'&&row.state==='open').map(row=>format.parseWorkOrderBody(row.body).metadata.cancelsOrderNumber));
-    const startableOrderNumbers=observations.filter(row=>row.kind==='order'&&row.state==='open'&&!cancelTargets.has(row.issueNumber)).map(row=>row.issueNumber);
+    const observed=format.observedOrderIssues(issues);
+    const startableOrderNumbers=observations.filter(row=>row.kind==='order'&&row.state==='open'&&!cancelTargets.has(row.issueNumber)&&!format.orderIssueProblem(observed,row.issueNumber)).map(row=>row.issueNumber);
     const record={schemaVersion:1,reportId:randomUUID(),projectRoot:project.root,repositoryId:project.config.repository.repositoryId,createdAt:now,baseFingerprints,nextFingerprints,observations,startableOrderNumbers,cancellationRequestNumbers};
     const bytes=encode(record);format.validateDesignerInboxRecord(bytes,project,record.reportId);
     format.ensureProjectDirectory(project.root,'.designeritl/reports');
@@ -108,8 +109,9 @@ export function createDesignerInbox(format,orders) {
     if(checkOnly)return {status:'checked'};
     const excluded=new Set(publications.filter(row=>row.descriptor.kind==='final').map(row=>row.descriptor.orderNumber));
     for(const row of observed)if(row.state==='open'&&row.parsed?.kind==='cancellation')excluded.add(row.parsed.metadata.cancelsOrderNumber);
-    const available=observed.filter(row=>!row.error&&row.state==='open'&&row.parsed?.kind==='order'&&!excluded.has(row.issueNumber));
+    const available=observed.filter(row=>!format.orderIssueProblem(observed,row.issueNumber)&&row.state==='open'&&row.parsed?.kind==='order'&&!excluded.has(row.issueNumber));
     const active=project.state.assignment;
+    const problem=format.orderIssueProblem(observed,orderNumber??active?.orderId.issueNumber);if(problem)fail(problem);
     const activeNumber=available.find(row=>row.issueNumber===active?.orderId.issueNumber)?.issueNumber;
     const number=orderNumber??activeNumber??(available.length===1?available[0].issueNumber:null);
     const chosen=available.find(row=>row.issueNumber===number);
@@ -133,6 +135,6 @@ export function createDesignerInbox(format,orders) {
 }
 ```
 
-`prepare` saves the immutable exact remote bodies, change classification, original-scope comparisons, available order numbers and next fingerprints before changing observation state. Display that report to the participant, including existing divergence and invalid metadata, then call `acknowledge` with `disclosed: true`. The receipt is an observation/disclosure record, never developer acceptance or designer completion.
+`prepare` saves the immutable exact remote bodies, change classification, original-scope comparisons, available order numbers and next fingerprints before changing observation state. Display that report to the participant, including existing divergence and invalid metadata, then call `acknowledge` with `disclosed: true`. Saved reports from before relation isolation remain replayable with their original startable list; fresh observations and `beginWork` decide current eligibility. The receipt is an observation/disclosure record, never developer acceptance or designer completion.
 
 A crash before fingerprint advancement replays the saved report. A crash after advancement but before its receipt also replays it; matching next fingerprints finish the same disclosure without rewriting history. Conflicting observation history or report/receipt identity stops and retains evidence. Starting orders, ticking local tasks and unrelated remote timestamps never update these body hashes. Reports do not select an assignment or edit a prototype.

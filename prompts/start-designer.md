@@ -2,4 +2,6 @@ Start a Designer in the loop project with me as the designer. Show me the curren
 
 Leave human onboarding and usage instructions in the root `HUMAN-README.md`, preserving existing content and agent instruction files. Let me choose an eligible personal account or organisation equally, name the separate private transport repository, and name my developer partner. Keep product-code access and transport cloning out of setup. Browser authentication belongs to me and GitHub CLI stores the credentials. Create the transport with a README commit, invite only the partner I name, bind validated role-specific configuration to its stable ID, and produce the secret-free join prompt for the developer. Report any partially completed step with its observed identity so I can resume it.
 
+On first-time setup, watch this private transport through my existing GitHub CLI session so GitHub can email me about work orders. Tell me I can say “skip watching” before continuing. Report watching separately from email delivery.
+
 After setup, this prompt explicitly requests one inbox invocation through my selected agent, using the installed inbox instructions to confirm connectivity. No ongoing inbox checks are requested. If this source has not yet published the complete real role bundle, report that fact before claiming installation success.

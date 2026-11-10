@@ -1,3 +1,3 @@
 # Keep the accumulated design in project-level versions
 
-Prototype versions belong to the project and normally keep its accumulated design together, rather than isolating each work order's output. Shared design changes need to carry across earlier work, so each delivery contains a project version while answering exactly one order; recipients must distinguish the scope of the order from the contents of the prototype.
+Prototype versions belong to the project and normally keep its accumulated design together. Shared design changes need to carry across earlier work. A delivery of a numbered version contains that entire version and answers exactly one work order. A progress delivery can also contain files or folders the designer explicitly selects for that order.

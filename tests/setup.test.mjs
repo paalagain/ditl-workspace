@@ -83,7 +83,8 @@ test('join prompts carry only whitelisted transport identity and the other role,
   assert.match(prompt,/as developer/);
   assert.ok(prompt.includes('paalagain/ditl-workspace'));
   assert.match(prompt,/current folder and ask whether to use it/);
-  assert.doesNotMatch(prompt,/DO_NOT_COPY|C:\/private/);
+  assert.doesNotMatch(prompt,/DO_NOT_COPY|C:\/private|skip watching/);
+  assert.match(s.joinPrompt({repositoryId:101,owner:'alice',name:'transport'},'designer'),/skip watching/);
   assert.throws(()=>s.joinPrompt({repositoryId:101,owner:'alice',name:'transport'},'developer','https://token@example.com/repo'),/identity\/source/);
   const a=mkdtempSync(join(tmpdir(),'ditl-setup-a-')),b=mkdtempSync(join(tmpdir(),'ditl-setup-b-'));
   s.initializeProject(a,s.projectConfiguration('designer',{id:101,owner:{login:'alice'},name:'transport',private:true,permissions:{push:true}}),f);
@@ -93,4 +94,112 @@ test('join prompts carry only whitelisted transport identity and the other role,
   assert.equal(f.readProject(b).deliveryDestination,join(b,'downloads'));
   assert.throws(()=>s.projectConfiguration(null,{id:101}),/Choose designer or developer/);
   assert.throws(()=>s.projectConfiguration('developer',{id:101,owner:{login:'alice'},name:'transport',private:false,permissions:{push:true}}),/private transport/);
+});
+
+function watchFixture({subscription,afterWrite,writeStatus=0,scope='repo',login='designer',remoteId=101,verifyLogin='designer',repositoryStatus=200,sso=false,missingDocument='https://docs.github.com/rest/activity/watching#get-a-repository-subscription'}={}) {
+  const repository={id:101,name:'transport',owner:{login:'alice'},private:true,permissions:{push:true}};
+  const endpoint='repos/alice/transport/subscription',calls=[];
+  const response=(status,body)=>({
+    status:status===200?0:1,
+    stdout:['HTTP/2.0 '+status+' '+(status===200?'OK':'Error'),'X-OAuth-Scopes: '+scope,...(sso?['X-GitHub-SSO: required']:[]),'',JSON.stringify(body)].join('\r\n'),
+  });
+  const runGh=args=>{
+    assert.deepEqual(args.slice(0,4),['api','--hostname','github.com','--include']);
+    if(args[4]==='user')return response(200,{id:73,login:verifyLogin});
+    if(args[4]==='repos/alice/transport')return response(repositoryStatus,{...repository,id:remoteId});
+    if(args[4]===endpoint){
+      calls.push('read');
+      if(typeof subscription==='number')return response(subscription,{message:'Not Found',documentation_url:missingDocument});
+      return response(200,{repository_url:'https://api.github.com/repos/alice/transport',...subscription});
+    }
+    assert.deepEqual(args.slice(4),['--method','PUT',endpoint,'-F','subscribed=true','-F','ignored=false']);
+    calls.push('write');
+    subscription=afterWrite??{subscribed:true,ignored:false};
+    return {status:writeStatus,stdout:''};
+  };
+  return {repository,calls,options:{watching:{login,choice:'enable',runGh}}};
+}
+
+test('first designer setup enables a missing watch and verifies it even if the write response is lost',async()=>{
+  const s=await setup(),f=await integrity();
+  const root=mkdtempSync(join(tmpdir(),'ditl-watch-'));
+  const {repository,calls,options}=watchFixture({subscription:404,writeStatus:null});
+  const config=s.projectConfiguration('designer',repository);
+  const result=s.initializeProject(root,config,f,options);
+  assert.deepEqual(calls,['read','write','read']);
+  assert.equal(result.watching.status,'watching');
+  assert.equal(f.readProject(root).config.repository.repositoryId,repository.id);
+
+  const afterUnwatch=watchFixture({subscription:404});
+  s.initializeProject(root,config,f,afterUnwatch.options);
+  assert.deepEqual(afterUnwatch.calls,[]);
+});
+
+test('a designer setup that finishes while another checks watching keeps its watch choice',async()=>{
+  const s=await setup(),f=await integrity();
+  const root=mkdtempSync(join(tmpdir(),'ditl-watch-'));
+  const {repository,calls,options}=watchFixture({subscription:404});
+  const config=s.projectConfiguration('designer',repository);
+  const {runGh}=options.watching;
+  options.watching.runGh=args=>{
+    const result=runGh(args);
+    if(args[4]?.endsWith('/subscription')) {
+      const completed=s.initializeProject(root,config,f,{watching:{...options.watching,choice:'skip'}});
+      assert.equal(completed.watching.status,'skipped');
+    }
+    return result;
+  };
+  assert.throws(()=>s.initializeProject(root,config,f,options),/Project appeared during setup/);
+  assert.deepEqual(calls,['read']);
+  assert.equal(f.readProject(root).config.repository.repositoryId,repository.id);
+});
+
+test('designer setup preserves every existing subscription',async()=>{
+  const s=await setup(),f=await integrity();
+  for(const observed of [{subscribed:true,ignored:false},{subscribed:false,ignored:true},{subscribed:false,ignored:false}]){
+    const root=mkdtempSync(join(tmpdir(),'ditl-watch-'));
+    const {repository,calls,options}=watchFixture({subscription:observed});
+    const result=s.initializeProject(root,s.projectConfiguration('designer',repository),f,options);
+    assert.deepEqual(calls,['read']);
+    assert.equal(result.watching.status,observed.subscribed?'watching':'preserved');
+    if(!observed.subscribed)assert.equal(result.watching.ignored,observed.ignored);
+  }
+});
+
+test('designer setup finishes with watching unconfirmed when access or readback is uncertain',async()=>{
+  const s=await setup(),f=await integrity();
+  for(const [settings,expected] of [
+    [{subscription:403},['read']],
+    [{subscription:404,scope:''},['read']],
+    [{subscription:404,missingDocument:'https://docs.github.com/rest'},['read']],
+    [{subscription:{subscribed:true,ignored:false,repository_url:'https://api.github.com/repos/alice/other'}},['read']],
+    [{subscription:404,sso:true},[]],
+    [{subscription:404,remoteId:102},[]],
+    [{subscription:404,verifyLogin:'other-account'},[]],
+    [{subscription:404,repositoryStatus:404},[]],
+    [{subscription:404,afterWrite:500},['read','write','read']],
+  ]){
+    const root=mkdtempSync(join(tmpdir(),'ditl-watch-'));
+    const {repository,calls,options}=watchFixture(settings);
+    const result=s.initializeProject(root,s.projectConfiguration('designer',repository),f,options);
+    assert.deepEqual(calls,expected);
+    assert.equal(result.watching.status,'unconfirmed');
+    assert.equal(f.readProject(root).config.role,'designer');
+  }
+});
+
+test('skip, developer setup, and an invalid local project never touch GitHub watching',async()=>{
+  const s=await setup(),f=await integrity();
+  const {repository}=watchFixture();
+  let calls=0;
+  const watching={login:'designer',choice:'enable',runGh:()=>{calls++;}};
+  const designer=s.projectConfiguration('designer',repository);
+  const skipRoot=mkdtempSync(join(tmpdir(),'ditl-watch-skip-'));
+  assert.equal(s.initializeProject(skipRoot,designer,f,{watching:{...watching,choice:'skip'}}).watching.status,'skipped');
+  const developerRoot=mkdtempSync(join(tmpdir(),'ditl-watch-developer-'));
+  assert.equal(s.initializeProject(developerRoot,s.projectConfiguration('developer',repository),f,{watching}).watching,undefined);
+  const invalidRoot=mkdtempSync(join(tmpdir(),'ditl-watch-invalid-'));
+  writeFileSync(join(invalidRoot,'.designeritl'),'foreign content');
+  assert.throws(()=>s.initializeProject(invalidRoot,designer,f,{watching}));
+  assert.equal(calls,0);
 });

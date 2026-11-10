@@ -1,5 +1,5 @@
 interface:
   display_name: "order"
-  short_description: "Create a numbered work order or linked feedback, recovering an interrupted request."
+  short_description: "DITL order (explicit invocation only): work orders and feedback."
 policy:
   allow_implicit_invocation: false

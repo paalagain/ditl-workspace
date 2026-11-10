@@ -1,6 +1,6 @@
 # Delivery format v1
 
-Revision: 6
+Revision: 10
 
 Canonical integrity implementation follows. Execute this exact fenced module using Node 22.20+; only the invocation parameters and calling code may vary. It is protocol text, not a shipped workspace CLI. All hashing, including auxiliary diagnostics, uses this block's `sha256` and inventory helpers. Prefer importing the verbatim block as a Node data module without temporary files. If materialized, use a unique owned temporary directory; retain it when a fixture requests evidence. Otherwise remove only the exact known owned module files with Node after verifying their absolute paths. Do not replace hashing, ZIP, inventories, inspection or extraction with shell/OS tools.
 
@@ -38,24 +38,40 @@ function uniquePaths(entries) {
 export function payloadDigest(files) {
   return sha256(Buffer.concat([...files].sort(utf8Order).map(e=>Buffer.from(`${e.path}\0${e.bytes}\0${e.sha256}\n`,'utf8'))));
 }
-export function inventory(root) {
-  const entries=[], files=[];
-  function walk(directory,prefix='') {
-    const stat=lstatSync(directory);
-    if(!stat.isDirectory() || stat.isSymbolicLink()) fail('Unsafe directory or link');
-    for(const name of readdirSync(directory)) {
-      const path=prefix+name, full=join(directory,name), item=lstatSync(full);
-      safePath(path);
-      if(item.isSymbolicLink()) fail(`Link refused: ${path}`);
-      if(item.isDirectory()) { entries.push({path:path+'/'}); walk(full,path+'/'); }
-      else if(item.isFile()) { const data=readFileSync(full); const e={path,bytes:data.length,sha256:sha256(data)}; entries.push(e); files.push(e); }
-      else fail(`Special file refused: ${path}`);
+function collectTree(sourcePath,path,entries) {
+  if(path) safePath(path);
+  const item=lstatSync(sourcePath);
+  if(item.isSymbolicLink()) fail(`Link refused: ${path || sourcePath}`);
+  if(item.isDirectory()) {
+    const prefix=path ? path+'/' : '';
+    if(path) entries.push({path:prefix});
+    for(const name of readdirSync(sourcePath)) collectTree(join(sourcePath,name),prefix+name,entries);
+  } else if(path && item.isFile()) {
+    entries.push({path,sourcePath,size:item.size});
+  } else fail(`Special file or invalid directory refused: ${path || sourcePath}`);
+}
+function inventoryEntries(entries) {
+  uniquePaths(entries);
+  const files=[], directories=[];
+  for(const entry of [...entries].sort(utf8Order)) {
+    if(entry.path.endsWith('/')) directories.push(entry.path);
+    else {
+      const data=readFileSync(entry.sourcePath);
+      files.push({path:entry.path,bytes:data.length,sha256:sha256(data)});
     }
   }
-  walk(root); uniquePaths(entries);
-  if(!lstatSync(join(root,'index.html')).isFile() || !lstatSync(join(root,'assets')).isDirectory() || lstatSync(join(root,'assets')).isSymbolicLink()) fail('Prototype requires index.html and assets directory');
-  files.sort(utf8Order);
-  return {files,directories:entries.filter(e=>e.path.endsWith('/')).sort(utf8Order).map(e=>e.path),payloadSha256:payloadDigest(files)};
+  return {files,directories,payloadSha256:payloadDigest(files)};
+}
+export function inventoryDelivery(root,payloadType) {
+  const entries=[];
+  collectTree(root,'',entries);
+  const result=inventoryEntries(entries);
+  if(payloadType==='files') return result;
+  if(!result.files.some(entry=>entry.path==='index.html') || !result.directories.includes('assets/')) fail('Prototype requires index.html and assets directory');
+  return result;
+}
+export function inventory(root) {
+  return inventoryDelivery(root);
 }
 function crc32(bytes) {
   let crc=0xffffffff;
@@ -163,7 +179,8 @@ export function receiveDelivery(zip,descriptor,destination,limits=limitsV1) {
   extractionDestination(destination,declared.totalBytes);
   const verified=verifyDelivery(zip,descriptor,limits);
   extractZip(verified.entries,destination,limits);
-  const manifestBytes=readFileSync(join(destination,'manifest.json')), inv=inventory(join(destination,verified.manifest.capturedFolder));
+  const manifestBytes=readFileSync(join(destination,'manifest.json'));
+  const inv=inventoryDelivery(join(destination,verified.manifest.capturedFolder),verified.manifest.payloadType);
   if(sha256(manifestBytes)!==descriptor.manifestSha256||!same(inv.files,verified.manifest.inventory)||!same(inv.directories,manifestDirectories(verified.manifest))||inv.payloadSha256!==verified.manifest.payloadSha256) fail('Extracted delivery changed during reception');
   return verified;
 }
@@ -192,9 +209,9 @@ function frozen(record,version=1) {
   if(parsed.schemaVersion!==undefined&&parsed.schemaVersion!==version) fail('Unsupported frozen evidence version');
   return parsed;
 }
-function manifestDirectories(m) {
+export function manifestDirectories(m) {
   if(m.directories!==undefined&&(!Array.isArray(m.directories)||m.directories.some(path=>typeof path!=='string'||!path.endsWith('/')))) fail('Invalid manifest directories');
-  const required=new Set(['assets/']);
+  const required=new Set(m.payloadType==='files'?[]:['assets/']);
   for(const item of [...m.inventory,...(m.directories||[]).map(path=>({path}))]) {
     const parts=safePath(item.path,item.path.endsWith('/')).split('/');
     for(let n=1;n<parts.length;n++) required.add(parts.slice(0,n).join('/')+'/');
@@ -205,13 +222,31 @@ function manifestDirectories(m) {
   if(m.directories!==undefined&&!same(paths,sorted)||[...required].some(path=>!paths.includes(path))) fail('Missing or unsorted manifest directories');
   return sorted;
 }
+function validateInventory(m) {
+  if(!Array.isArray(m.inventory)) fail('Invalid inventory');
+  for(const e of m.inventory) if(!text(e?.path)||!Number.isSafeInteger(e.bytes)||e.bytes<0||!isHash(e.sha256)||e.path.endsWith('/')) fail('Invalid inventory');
+  manifestDirectories(m);
+  if(!same(m.inventory,[...m.inventory].sort(utf8Order))||payloadDigest(m.inventory)!==m.payloadSha256) fail('Invalid inventory digest or order');
+}
+function validVersionCapture(record) {
+  return positive(record.versionNumber)&&text(record.capturedFolder)&&new RegExp(`^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.v${record.versionNumber}$`).test(record.capturedFolder);
+}
+function validFilesCapture(record) {
+  return record.kind==='send'&&record.payloadType==='files'&&record.capturedFolder==='files'&&record.versionNumber===undefined;
+}
 export function validateManifest(bytes) {
-  const m=parseJSON(bytes); identity(m,2);
-  if(!positive(m.versionNumber)||!text(m.capturedFolder)||!new RegExp(`^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.v${m.versionNumber}$`).test(m.capturedFolder)||!utc(m.capturedAt)||!isHash(m.payloadSha256)||!isHash(m.scopeSha256)||!Array.isArray(m.inventory)||!ordinals(m.localProgress?.checkedOrdinals)||typeof m.localProgress.taskContext!=='string'||!['summary','outsideOrder','workInProgress'].every(k=>text(m.deliveryNote?.[k]))) fail('Invalid manifest fields');
+  const m=parseJSON(bytes);
+  const files=m.payloadType==='files';
+  identity(m,files?3:2);
+  if(files ? !validFilesCapture(m)||!Array.isArray(m.directories)||!(m.inventory?.length||m.directories.length)
+    : m.payloadType!==undefined||!validVersionCapture(m)) fail('Invalid manifest capture identity');
+  if(!utc(m.capturedAt)||!isHash(m.scopeSha256)||!ordinals(m.localProgress?.checkedOrdinals)||typeof m.localProgress.taskContext!=='string'||!['summary','outsideOrder','workInProgress'].every(k=>text(m.deliveryNote?.[k]))) fail('Invalid manifest fields');
   safePath(m.capturedFolder);
-  for(const e of m.inventory) if(!text(e.path)||!Number.isSafeInteger(e.bytes)||e.bytes<0||!isHash(e.sha256)||e.path.endsWith('/')) fail('Invalid inventory');
-  uniquePaths(m.inventory); manifestDirectories(m);
-  if(!same(m.inventory,[...m.inventory].sort(utf8Order))||payloadDigest(m.inventory)!==m.payloadSha256||!m.inventory.some(e=>e.path==='index.html')) fail('Invalid inventory digest or order');
+  validateInventory(m);
+  if(files&&(m.inventory.length+m.directories.length+2>limitsV1.entries||bytes.length>limitsV1.entryBytes||
+    m.inventory.some(entry=>entry.bytes>limitsV1.entryBytes)||
+    m.inventory.reduce((total,entry)=>total+entry.bytes,bytes.length)>limitsV1.totalBytes)) fail('Selected files and manifest exceed delivery limits');
+  if(!files&&!m.inventory.some(e=>e.path==='index.html')) fail('Invalid inventory digest or order');
   if(m.kind==='final') {
     if(!exactKeys(m.evidence,['reassessment','decision'])) fail('Invalid final evidence fields');
     const reassessment=frozen(m.evidence.reassessment);
@@ -227,8 +262,18 @@ export function validateManifest(bytes) {
   } else if(m.evidence!==null || m.deliveredUncheckedOrdinals!==null) fail('Nonfinal delivery cannot claim final evidence');
   return m;
 }
-export function packageDelivery(manifestBytes,prototypeRoot) {
-  const m=validateManifest(manifestBytes), inv=inventory(prototypeRoot);
+export function fileDeliveryManifest(record) {
+  const {scopeSha256,localProgress,deliveryNote}=record.fileDeliveryContext;
+  const {files,directories,payloadSha256}=record.selectedInventory;
+  const manifest={schemaVersion:3,payloadType:'files',repositoryId:record.repositoryId,orderNumber:record.orderNumber,
+    deliveryId:record.deliveryId,tag:record.tag,kind:record.kind,capturedFolder:record.capturedFolder,capturedAt:record.capturedAt,
+    inventory:files,directories,payloadSha256,scopeSha256,localProgress,deliveryNote,evidence:null,deliveredUncheckedOrdinals:null};
+  const bytes=Buffer.from(JSON.stringify(manifest,null,2)+'\n');
+  validateManifest(bytes);
+  return bytes;
+}
+export function packageDelivery(manifestBytes,captureRoot) {
+  const m=validateManifest(manifestBytes), inv=inventoryDelivery(captureRoot,m.payloadType);
   if(!same(inv.files,m.inventory)||!same(inv.directories,manifestDirectories(m))||inv.payloadSha256!==m.payloadSha256) fail('Captured bytes disagree with manifest');
   const entries=[{path:'manifest.json',data:Buffer.from(manifestBytes)},{path:m.capturedFolder+'/',data:Buffer.alloc(0)}];
   function walk(root,prefix) {
@@ -239,10 +284,10 @@ export function packageDelivery(manifestBytes,prototypeRoot) {
       else if(stat.isFile()) entries.push({path,data:readFileSync(source)}); else fail('Special file refused');
     }
   }
-  walk(prototypeRoot,m.capturedFolder+'/');
+  walk(captureRoot,m.capturedFolder+'/');
   const zip=writeZip(entries), descriptor={schemaVersion:1,repositoryId:m.repositoryId,orderNumber:m.orderNumber,deliveryId:m.deliveryId,tag:m.tag,kind:m.kind,assetName:'delivery.zip',assetBytes:zip.length,manifestSha256:sha256(manifestBytes),zipSha256:sha256(zip)};
   verifyDelivery(zip,descriptor);
-  if(!same(inventory(prototypeRoot),inv)) fail('Prototype changed during packaging');
+  if(!same(inventoryDelivery(captureRoot,m.payloadType),inv)) fail('Capture changed during packaging');
   return {zip,descriptor};
 }
 export function verifyDelivery(zip,descriptor,limits=limitsV1) {
@@ -279,10 +324,13 @@ export function prototypeDirectories(root) {
   walk(root);
   return directories.sort((a,b)=>Buffer.compare(Buffer.from(a),Buffer.from(b)));
 }
+function containsPath(root,path) {
+  const child=relative(root,path);
+  return !child || (child!=='..'&&!child.startsWith('..'+sep)&&!isAbsolute(child));
+}
 export function capturePrototype(source,destination) {
   const from=resolve(source), target=resolve(destination);
-  const contained=(a,b)=>{const path=relative(a,b);return !path || (path!=='..'&&!path.startsWith('..'+sep)&&!isAbsolute(path));};
-  if(contained(from,target)||contained(target,from)) fail('Capture paths overlap');
+  if(containsPath(from,target)||containsPath(target,from)) fail('Capture paths overlap');
   if(existsSync(target)) fail('Capture staging already exists; preserve and reconcile it');
   const before={...inventory(from),directories:prototypeDirectories(from)};
   function copy(path,to) {
@@ -300,14 +348,82 @@ export function capturePrototype(source,destination) {
   if(!same(before,captured)||!same(before,after)) fail('Source changed during capture; preserve incomplete staging');
   return captured;
 }
+function validateFileSources(sources) {
+  if(!Array.isArray(sources)||!sources.length||sources.length>limitsV1.entries-2) fail('Choose one or more files or folders');
+  for(const source of sources) {
+    if(!exactKeys(source,['path','sourcePath'])||!text(source.sourcePath)||resolve(source.sourcePath)!==source.sourcePath) fail('Invalid selected file source');
+    safePath(source.path);
+  }
+  uniquePaths(sources);
+}
+function selectedFileEntries(sources,target) {
+  validateFileSources(sources);
+  const entries=[];
+  for(const {sourcePath,path} of sources) {
+    if(target&&(containsPath(sourcePath,target)||containsPath(target,sourcePath))) fail('Capture paths overlap');
+    if(!sameLocalPath(realpathSync(sourcePath),sourcePath)) fail('Linked file source refused');
+    collectTree(sourcePath,path,entries);
+  }
+  const parents=new Set();
+  for(const entry of entries) {
+    const parts=entry.path.replace(/\/$/,'').split('/');
+    for(let n=1;n<parts.length;n++) parents.add(parts.slice(0,n).join('/')+'/');
+  }
+  const explicit=new Set(entries.map(entry=>entry.path));
+  for(const path of parents) if(!explicit.has(path)) entries.push({path});
+  if(entries.length>limitsV1.entries-2||entries.some(entry=>entry.size>limitsV1.entryBytes)) fail('Selected files exceed delivery limits');
+  if(entries.reduce((total,entry)=>total+(entry.size??0),0)>=limitsV1.totalBytes) fail('Selected files leave insufficient space for the delivery manifest');
+  return entries;
+}
+export function inspectFileSelection(projectRoot,paths,target) {
+  if(!Array.isArray(paths)||!paths.length||paths.some(path=>!text(path))) fail('Choose one or more files or folders');
+  const sourceFiles=paths.map(path=>{
+    const sourcePath=resolve(projectRoot,path);
+    const archivePath=containsPath(projectRoot,sourcePath)?relative(projectRoot,sourcePath).split(sep).join('/'):basename(sourcePath);
+    return {path:archivePath,sourcePath};
+  });
+  return {sourceFiles,selectedInventory:inventoryEntries(selectedFileEntries(sourceFiles,target))};
+}
+export function captureFiles(sources,destination,expected) {
+  const target=resolve(destination);
+  if(!sameLocalPath(realpathSync(dirname(target)),dirname(target))) fail('Linked snapshot parent refused');
+  const entries=selectedFileEntries(sources,target);
+  if(!same(inventoryEntries(entries),expected)) fail('Selected files changed since reservation');
+  mkdirSync(target);
+  for(const {path,sourcePath} of entries) {
+    const output=join(target,...path.split('/'));
+    if(path.endsWith('/')) mkdirSync(output,{recursive:true});
+    else {
+      mkdirSync(dirname(output),{recursive:true});
+      copyFileSync(sourcePath,output);
+    }
+  }
+  const captured=inventoryDelivery(target,'files');
+  const after=inventoryEntries(selectedFileEntries(sources,target));
+  if(!same(captured,expected)||!same(after,expected)) fail('Selected files changed during capture; preserve incomplete staging');
+  return captured;
+}
 export function validatePendingRecord(bytes,repositoryId) {
   const record=parseJSON(bytes); identity(record);
   if(record.repositoryId!==repositoryId) fail('Pending repository identity mismatch');
-  if(!positive(record.versionNumber)||!text(record.capturedFolder)||!new RegExp(`^[a-zA-Z0-9][a-zA-Z0-9._-]*\\.v${record.versionNumber}$`).test(record.capturedFolder)||!utc(record.capturedAt)) fail('Invalid pending version or capture time');
+  if(!utc(record.capturedAt)) fail('Invalid pending capture time');
+  if(record.payloadType==='files') {
+    if(!validFilesCapture(record)||record.sourcePath!==undefined||record.captureReplacement!==undefined) fail('Invalid pending file delivery');
+    validateFileSources(record.sourceFiles);
+    const selected=record.selectedInventory;
+    if(!exactKeys(selected,['files','directories','payloadSha256'])||!Array.isArray(selected.directories)||
+      !(selected.files?.length||selected.directories.length)) fail('Invalid selected inventory');
+    if(!exactKeys(record.fileDeliveryContext,['scopeSha256','localProgress','deliveryNote'])) fail('Invalid file delivery context');
+    fileDeliveryManifest(record);
+    if(record.payloadSha256!==undefined&&
+      (!same(record.capturedInventory,selected.files)||!same(record.capturedDirectories,selected.directories)||record.payloadSha256!==selected.payloadSha256)) fail('Pending capture does not match selected files');
+  } else if(record.payloadType!==undefined||!validVersionCapture(record)||!text(record.sourcePath)||!isAbsolute(record.sourcePath)) {
+    fail('Invalid pending version or capture path');
+  }
   safePath(record.capturedFolder);
   const token=record.assignmentToken;
   if(!token||token.orderId?.repositoryId!==repositoryId||token.orderId.issueNumber!==record.orderNumber||!uuid(token.activationId)) fail('Invalid pending assignment token');
-  if(!text(record.sourcePath)||!isAbsolute(record.sourcePath)||!text(record.stagingPath)||!isAbsolute(record.stagingPath)) fail('Invalid pending capture path');
+  if(!text(record.stagingPath)||!isAbsolute(record.stagingPath)) fail('Invalid pending capture path');
   if(record.payloadSha256!==undefined&&!isHash(record.payloadSha256)) fail('Invalid pending payload hash');
   if(['zipSha256','manifestSha256','assetBytes'].some(key=>record[key]!==undefined)&&(!isHash(record.zipSha256)||!isHash(record.manifestSha256)||!positive(record.assetBytes)||!isHash(record.payloadSha256))) fail('Incomplete pending package digest');
   if(['releaseId','assetId'].some(key=>record[key]!==undefined&&!positive(record[key]))) fail('Invalid pending remote identity');
@@ -336,6 +452,7 @@ export function beginCaptureReplacement(root,deliveryId,choice,observation) {
   const fresh=readProject(root,'designer'),path=`.designeritl/pending/${deliveryId}/record.json`;
   if(!uuid(deliveryId)) fail('Invalid delivery identity');
   const bytes=readProjectRecord(fresh.root,path),record=validatePendingRecord(bytes,fresh.config.repository.repositoryId);
+  if(record.payloadType==='files') fail('Numbered version replacement requires a prototype delivery');
   if(record.deliveryId!==deliveryId||record.captureReplacement!==undefined) fail('Reconcile the selected pending operation first');
   replacementPreflight(fresh,record,observation);
   if(!positive(choice?.versionNumber)||!text(choice.explicitDesignerStatement)) fail('Explicit numbered replacement choice required');
@@ -356,6 +473,26 @@ function replacementPreflight(context,record,observation) {
   if(observation?.repositoryId!==record.repositoryId||observation.complete!==true||!Array.isArray(observation.releases)||!Array.isArray(observation.tags)) fail('Complete bound remote observations required');
   if(observation.tags.some(tag=>!text(tag?.name))||observation.releases.some(release=>!text(release?.tag_name))) fail('Incomplete remote identity');
   if(observation.tags.some(tag=>tag.name===record.tag)||observation.releases.some(release=>release.tag_name===record.tag||typeof release.body==='string'&&release.body.includes(record.deliveryId))) fail('Occupied remote identity prevents capture replacement');
+}
+export function reselectFiles(root,deliveryId,choice,observation) {
+  if(!uuid(deliveryId)||!text(choice?.explicitDesignerStatement)) fail('Explicit file reselection required');
+  validateFileSources(choice.sourceFiles);
+  const project=readProject(root,'designer');
+  const validate=bytes=>validatePendingRecord(bytes,project.config.repository.repositoryId);
+  reconcileRecordReplacement(project,validate);
+  const fresh=readProject(project.root,'designer'), path=`.designeritl/pending/${deliveryId}/record.json`;
+  const previous=readProjectRecord(fresh.root,path), record=validate(previous);
+  if(record.deliveryId!==deliveryId||record.payloadType!=='files'||record.payloadSha256!==undefined) fail('Reselection requires an incomplete file capture');
+  replacementPreflight(fresh,record,observation);
+  if(lstatSync(record.stagingPath,{throwIfNoEntry:false})) fail('Reconcile the existing snapshot before selecting again');
+  const selection=inspectFileSelection(fresh.root,choice.sourceFiles.map(source=>source.sourcePath),join(fresh.root,'.designeritl','pending'));
+  if(!same(selection.sourceFiles,choice.sourceFiles)||!same(selection.selectedInventory,choice.selectedInventory)) fail('Selected files changed since preview');
+  const fileDeliveryContext={...record.fileDeliveryContext,deliveryNote:choice.deliveryNote};
+  const next={...record,...selection,fileDeliveryContext,capturedAt:new Date().toISOString()};
+  const bytes=Buffer.from(JSON.stringify(next,null,2)+'\n');
+  prepareRecordReplacement(fresh,path,bytes,{owner:'deliveries',kind:'owner',expectedPreviousSha256:sha256(previous)},validate);
+  reconcileRecordReplacement(readProject(fresh.root,'designer'),validate);
+  return validate(readProjectRecord(fresh.root,path));
 }
 export function resumeCaptureReplacement(root,deliveryId,observation) {
   if(!uuid(deliveryId)) fail('Invalid delivery identity');
@@ -410,10 +547,12 @@ function validateDraftCreation(record) {
   if(!exactKeys(saved,['schemaVersion','attempts'])||saved.schemaVersion!==1||!Array.isArray(saved.attempts)) fail('Invalid draft creation evidence');
   const ids=new Set();
   for(const attempt of saved.attempts) {
-    if(!exactKeys(attempt,['attemptId','descriptorSha256','startedAt','nonDispatchProof'])||!uuid(attempt.attemptId)||ids.has(attempt.attemptId)||!isHash(attempt.descriptorSha256)||!utc(attempt.startedAt)) fail('Invalid draft creation attempt');
+    if(!exactKeys(attempt,['attemptId','descriptorSha256','startedAt','nonDispatchProof',...(attempt.createReceipt!==undefined?['createReceipt']:[])])||!uuid(attempt.attemptId)||ids.has(attempt.attemptId)||!isHash(attempt.descriptorSha256)||!utc(attempt.startedAt)) fail('Invalid draft creation attempt');
     ids.add(attempt.attemptId);
     const proof=attempt.nonDispatchProof;
     if(proof!==null&&(!exactKeys(proof,['path','sha256'])||proof.path!==`.designeritl/pending/${record.deliveryId}/evidence/draft-nondispatch-${attempt.attemptId}.json`||!isHash(proof.sha256))) fail('Invalid draft non-dispatch evidence reference');
+    const receipt=attempt.createReceipt;
+    if(receipt!==undefined&&(proof!==null||!exactKeys(receipt,['path','sha256','releaseId'])||receipt.path!==`.designeritl/pending/${record.deliveryId}/evidence/draft-create-${attempt.attemptId}.json`||!isHash(receipt.sha256)||!positive(receipt.releaseId))) fail('Invalid draft create receipt reference');
   }
   if(saved.attempts.slice(0,-1).some(attempt=>attempt.nonDispatchProof===null)) fail('Uncertain draft attempt cannot be retried');
   return saved;
@@ -423,38 +562,68 @@ function draftTransition(previous,next) {
     if(previous.draftCreation===undefined||next.draftCreation===undefined) fail('Missing legacy draft attempt evidence cannot be initialized or removed');
     const before=validateDraftCreation(previous).attempts,after=validateDraftCreation(next).attempts;
     if(after.length<before.length||after.length>before.length+1) fail('Draft attempt evidence is append-only');
+    if(after.length>before.length&&after.at(-1).createReceipt!==undefined) fail('Draft create receipt requires an existing current attempt');
     for(let n=0;n<before.length;n++) {
       const a=before[n],b=after[n];
       if(['attemptId','descriptorSha256','startedAt'].some(key=>a[key]!==b[key])||(a.nonDispatchProof!==null&&!same(a.nonDispatchProof,b.nonDispatchProof))||(a.nonDispatchProof===null&&b.nonDispatchProof!==null&&n!==before.length-1)) fail('Draft attempt evidence is immutable');
+      if((a.createReceipt!==undefined&&!same(a.createReceipt,b.createReceipt))||(a.createReceipt===undefined&&b.createReceipt!==undefined&&(n!==before.length-1||after.length!==before.length))) fail('Draft create receipt is immutable and belongs to the current attempt');
     }
   }
 }
-export function reconcileDraftCreation(record,descriptor,pages,complete,tags) {
+function releaseObservation(release) {
+  if(!positive(release?.id)||!text(release.tag_name)||typeof release.draft!=='boolean'||!(release.body===null||typeof release.body==='string')) fail('Invalid release observation');
+  const blocks=[...(release.body||'').matchAll(/^```designeritl-delivery\r?\n([\s\S]*?)\r?\n```[ \t]*$/gm)];
+  let observed=null;
+  if(blocks.length) {
+    if(blocks.length!==1) fail('Conflicting release descriptor blocks');
+    observed=parseJSON(Buffer.from(blocks[0][1]));identity(observed);
+  }
+  return {id:release.id,tag_name:release.tag_name,draft:release.draft,descriptor:observed};
+}
+export function reconcileDraftCreation(record,descriptor,pages,complete,tags,observations={}) {
   validatePendingRecord(Buffer.from(JSON.stringify(record)),record.repositoryId);identity(descriptor);
   for(const key of ['repositoryId','orderNumber','deliveryId','tag','kind','zipSha256','manifestSha256','assetBytes']) if(record[key]!==descriptor[key]) fail('Saved draft descriptor conflict');
   if(record.draftCreation!==undefined&&validateDraftCreation(record).attempts.some(attempt=>attempt.descriptorSha256!==sha256(Buffer.from(JSON.stringify(descriptor))))) fail('Attempted draft descriptor is immutable');
   if(complete!==true||!Array.isArray(pages)||!pages.every(Array.isArray)||!Array.isArray(tags)||tags.some(tag=>!text(tag?.name))) fail('Incomplete draft identity lookup');
-  const matches=[];
-  for(const release of pages.flat()) {
-    if(!positive(release?.id)||!text(release.tag_name)||typeof release.draft!=='boolean'||!(release.body===null||typeof release.body==='string')) fail('Invalid release observation');
-    const blocks=[...(release.body||'').matchAll(/^```designeritl-delivery\r?\n([\s\S]*?)\r?\n```[ \t]*$/gm)];
-    let observed=null;
-    if(blocks.length) {
-      if(blocks.length!==1) fail('Conflicting release descriptor blocks');
-      observed=parseJSON(Buffer.from(blocks[0][1]));identity(observed);
-    }
-    if(release.tag_name===record.tag||observed?.deliveryId===record.deliveryId) {
+  const sources=[pages],graphql=observations.graphql;
+  if(graphql!==undefined) {
+    if(graphql?.complete!==true||!Array.isArray(graphql.pages)||!graphql.pages.every(Array.isArray)) fail('Incomplete GraphQL draft identity lookup');
+    sources.push(graphql.pages);
+  }
+  const releases=new Map();
+  for(const source of sources) for(const release of source.flat()) {
+    const observed=releaseObservation(release),prior=releases.get(observed.id);
+    if(prior&&!same(prior,observed)) fail('Conflicting observations for release id');
+    releases.set(observed.id,observed);
+  }
+  const last=record.draftCreation?.attempts.at(-1),receipt=last?.createReceipt,matches=[];
+  for(const release of releases.values()) {
+    const observed=release.descriptor;
+    if(release.id===receipt?.releaseId||release.tag_name===record.tag||observed?.deliveryId===record.deliveryId) {
       if(release.tag_name!==record.tag||!same(observed,descriptor)) fail('Occupied identity or draft descriptor conflict');
       matches.push(release);
     }
   }
   if(matches.length>1) fail('Duplicate draft delivery identity');
+  if(matches.length===1&&receipt&&matches[0].id!==receipt.releaseId) fail('Duplicate draft delivery identity');
   if(matches.length===1) return {action:'resume',releaseId:matches[0].id,draft:matches[0].draft};
   if(tags.some(tag=>tag.name===record.tag)) fail('Occupied delivery tag without matching release');
+  if(receipt) {
+    if(observations.directRelease!==undefined) {
+      const release=releaseObservation(observations.directRelease);
+      if(release.id!==receipt.releaseId||release.tag_name!==record.tag||release.draft!==true||!same(release.descriptor,descriptor)) fail('Direct draft receipt identity or descriptor conflict');
+      return {action:'resume-unlisted',releaseId:release.id,draft:release.draft};
+    }
+    fail(`Draft ${receipt.releaseId} exists but is not yet listed by GitHub; rerun later`);
+  }
   if(record.draftCreation===undefined) fail('Missing legacy draft attempt evidence; creation is uncertain');
-  const saved=validateDraftCreation(record),last=saved.attempts.at(-1);
   if(last&&last.nonDispatchProof===null) fail('Uncertain draft create attempt; reconcile read-only and wait for identity');
   return {action:'create'};
+}
+export function requireDraftPublication(record,descriptor,pages,complete,tags,releaseId,observations={}) {
+  const result=reconcileDraftCreation(record,descriptor,pages,complete,tags,observations);
+  if(result.action!=='resume'||result.releaseId!==releaseId||result.draft!==true) fail('Publication requires a unique listed draft delivery identity');
+  return result;
 }
 function draftContext(root,deliveryId) {
   const first=readProject(root,'designer'),validate=bytes=>validatePendingRecord(bytes,first.config.repository.repositoryId);
@@ -481,9 +650,9 @@ function saveDraftRecord(value,next) {
   reconcileRecordReplacement(readProject(context.root,'designer'),validate);
   return validate(readProjectRecord(context.root,path));
 }
-export function beginDraftCreation(root,deliveryId,pages,complete,tags) {
+export function beginDraftCreation(root,deliveryId,pages,complete,tags,observations={}) {
   const value=draftContext(root,deliveryId),{record,saved,context}=value;
-  if(reconcileDraftCreation(record,saved.descriptor,pages,complete,tags).action!=='create') fail('Matching release must resume instead of create');
+  if(reconcileDraftCreation(record,saved.descriptor,pages,complete,tags,observations).action!=='create') fail('Matching release must resume instead of create');
   for(const attempt of record.draftCreation.attempts) verifyNonDispatch(context,record,attempt);
   const attempt={attemptId:randomUUID(),descriptorSha256:sha256(Buffer.from(JSON.stringify(saved.descriptor))),startedAt:new Date().toISOString(),nonDispatchProof:null};
   const installed=saveDraftRecord(value,{...record,draftCreation:{schemaVersion:1,attempts:[...record.draftCreation.attempts,attempt]}});
@@ -492,10 +661,22 @@ export function beginDraftCreation(root,deliveryId,pages,complete,tags) {
 }
 export function recordDraftNonDispatch(root,deliveryId) {
   const value=draftContext(root,deliveryId),{record,context}=value,last=record.draftCreation?.attempts.at(-1);
-  if(!last||last.nonDispatchProof!==null) fail('An unresolved draft attempt is required');
+  if(!last||last.nonDispatchProof!==null||last.createReceipt!==undefined) fail('An unresolved draft attempt without a receipt is required');
   const path=`.designeritl/pending/${deliveryId}/evidence/draft-nondispatch-${last.attemptId}.json`,bytes=readProjectRecord(context.root,path),attempt={...last,nonDispatchProof:{path,sha256:sha256(bytes)}};
   verifyNonDispatch(context,record,attempt);
   return saveDraftRecord(value,{...record,draftCreation:{schemaVersion:1,attempts:[...record.draftCreation.attempts.slice(0,-1),attempt]}});
+}
+export function recordDraftCreateReceipt(root,deliveryId) {
+  const value=draftContext(root,deliveryId),{record,context,saved}=value,last=record.draftCreation?.attempts.at(-1);
+  if(!last||last.nonDispatchProof!==null||last.createReceipt!==undefined) fail('An unresolved draft attempt without a receipt is required');
+  const path=`.designeritl/pending/${deliveryId}/evidence/draft-create-${last.attemptId}.json`,bytes=readProjectRecord(context.root,path),release=releaseObservation(parseJSON(bytes));
+  const attempt={...last,createReceipt:{path,sha256:sha256(bytes),releaseId:release.id}};
+  verifyDraftCreateReceipt(bytes,record,attempt,saved.descriptor);
+  return saveDraftRecord(value,{...record,draftCreation:{schemaVersion:1,attempts:[...record.draftCreation.attempts.slice(0,-1),attempt]}});
+}
+function verifyDraftCreateReceipt(bytes,record,attempt,descriptor) {
+  const receipt=attempt.createReceipt,release=releaseObservation(parseJSON(bytes));
+  if(sha256(bytes)!==receipt.sha256||release.id!==receipt.releaseId||attempt.descriptorSha256!==sha256(Buffer.from(JSON.stringify(descriptor)))||release.tag_name!==record.tag||release.draft!==true||!same(release.descriptor,descriptor)) fail('Conflicting draft create receipt descriptor or bytes');
 }
 export function verifyPendingDelivery(pendingRoot,repositoryId) {
   const root=resolve(pendingRoot), read=name=>{
@@ -508,18 +689,23 @@ export function verifyPendingDelivery(pendingRoot,repositoryId) {
   if(basename(root)!==record.deliveryId) fail('Pending directory identity mismatch');
   const descriptor=parseJSON(read('descriptor.json')), zip=read('delivery.zip'), storedManifest=read('manifest.json');
   const verified=verifyDelivery(zip,descriptor), manifest=verified.manifest;
-  for(const key of ['repositoryId','orderNumber','deliveryId','tag','kind','versionNumber','capturedFolder','capturedAt','payloadSha256']) if(record[key]!==manifest[key]) fail('Pending record identity or capture mismatch');
+  for(const key of ['repositoryId','orderNumber','deliveryId','tag','kind','payloadType','versionNumber','capturedFolder','capturedAt','payloadSha256']) if(record[key]!==manifest[key]) fail('Pending record identity or capture mismatch');
   for(const key of ['zipSha256','manifestSha256','assetBytes']) if(record[key]!==descriptor[key]) fail('Pending record digest mismatch');
   if(sha256(storedManifest)!==descriptor.manifestSha256) fail('Pending manifest bytes mismatch');
+  if(record.payloadType==='files'&&!fileDeliveryManifest(record).equals(storedManifest)) fail('Pending manifest does not match reserved files');
   const snapshot=join(root,'snapshot',manifest.capturedFolder);
-  if(typeof record.sourcePath!=='string'||!record.sourcePath||typeof record.stagingPath!=='string'||resolve(record.stagingPath)!==snapshot) fail('Invalid pending capture path');
-  const captured=inventory(snapshot);
+  if(resolve(record.stagingPath)!==snapshot) fail('Invalid pending capture path');
+  const captured=inventoryDelivery(snapshot,manifest.payloadType);
   if(!same(captured.files,manifest.inventory)||captured.payloadSha256!==manifest.payloadSha256) fail('Pending capture does not match frozen manifest');
-  const prefix=manifest.capturedFolder+'/', directories=verified.entries.filter(e=>e.path.startsWith(prefix)&&e.path.endsWith('/')&&e.path!==prefix).map(e=>e.path.slice(prefix.length)).sort((a,b)=>Buffer.compare(Buffer.from(a),Buffer.from(b)));
-  if(!same(prototypeDirectories(snapshot),directories)) fail('Pending capture directory structure mismatch');
+  if(!same(captured.directories,manifestDirectories(manifest))) fail('Pending capture directory structure mismatch');
   if(manifest.kind==='final') for(const name of ['reassessment','decision']) {
     const evidence=manifest.evidence[name];
     if(evidence!==null&&!read(`evidence/${name}.json`).equals(Buffer.from(evidence.json))) fail('Pending frozen evidence bytes mismatch');
+  }
+  for(const attempt of record.draftCreation?.attempts||[]) if(attempt.createReceipt!==undefined) {
+    const evidence=lstatSync(join(root,'evidence'));
+    if(!evidence.isDirectory()||evidence.isSymbolicLink()) fail('Unsafe draft create receipt directory');
+    verifyDraftCreateReceipt(read(`evidence/draft-create-${attempt.attemptId}.json`),record,attempt,descriptor);
   }
   return {record,descriptor,manifest,zip,snapshot};
 }
@@ -750,6 +936,15 @@ export function createOrderRequest({repositoryId,title,goal,tasks,followsOrderNu
   const intendedBody=`# Goal\n${goal}\n\n${cancelsOrderNumber===null?`## Tasks\n${tasks.map(task=>`- [ ] ${task.ordinal}. ${task.text}`).join('\n')}\n\n`:''}\`\`\`designeritl-order\n${JSON.stringify(metadata)}\n\`\`\`\n`;
   return validatePendingOrderCreation({schemaVersion:1,repositoryId,requestId,title,intendedBody,intendedBodySha256:sha256(Buffer.from(intendedBody,'utf8')),submissionAttempted:false,result:null},repositoryId);
 }
+export function requireCancellationTarget(issue,{complete=false}={}) {
+  if(complete!==true||!object(issue)||!positive(issue.number)||issue.pull_request||typeof issue.body!=='string') fail('Cancellation target is unreadable or is not a supported work order; stop before mutation');
+  const parsed=parseWorkOrderBody(issue.body);
+  if(parsed?.kind!=='order') fail('Cancellation target is not a supported work order; stop before mutation');
+  if(!['open','closed'].includes(issue.state)||!Object.hasOwn(issue,'state_reason')) fail('Cancellation target state is unknown or incomplete; stop before mutation');
+  if(issue.state==='closed') fail('Cancellation target is already closed; use a follow-up order to ask for more work');
+  if(issue.state_reason!==null) fail('Cancellation target state is unknown or incomplete; stop before mutation');
+  return parsed;
+}
 export function reconcileOrderRequest(saved,pages,complete) {
   validatePendingOrderCreation(saved,saved.repositoryId);
   if(complete!==true||!Array.isArray(pages)||!pages.length||pages.some(page=>!Array.isArray(page))) fail('Incomplete paginated issue lookup; another create is refused');
@@ -760,6 +955,8 @@ export function reconcileOrderRequest(saved,pages,complete) {
   if(!matches.length) {
     if(saved.result!==null) fail('Previously completed issue is missing; another create is refused');
     if(saved.submissionAttempted) fail('Submission was attempted; absent listing identity is uncertain, wait and reconcile without another create');
+    const targetNumber=parseWorkOrderBody(saved.intendedBody).metadata.cancelsOrderNumber;
+    if(targetNumber!==null) requireCancellationTarget(pages.flat().find(issue=>issue.number===targetNumber),{complete:true});
     return null;
   }
   const match=matches[0];
@@ -985,6 +1182,15 @@ export function observedOrderIssues(issues) {
   }
   return result.sort((a,b)=>a.issueNumber-b.issueNumber);
 }
+export function orderIssueProblem(rows,number) {
+  const row=rows.find(row=>row.issueNumber===number);
+  if(row?.error)return `Issue #${number}: ${row.error}`;
+  for(const targetNumber of [row?.parsed?.metadata.followsOrderNumber,row?.parsed?.metadata.cancelsOrderNumber]) {
+    const target=rows.find(row=>row.issueNumber===targetNumber);
+    if(target?.error)return `Issue #${number} relation targets malformed issue #${targetNumber}: ${target.error}`;
+  }
+  return null;
+}
 function fingerprintMap(value) {
   if(!object(value)||Object.entries(value).some(([number,entry])=>!/^([1-9][0-9]*)$/.test(number)||!positive(Number(number))||!exactKeys(entry,['bodySha256','state'])||!isHash(entry.bodySha256)||!['open','closed'].includes(entry.state))) fail('Unsupported order-observation record');
   return value;
@@ -1010,17 +1216,21 @@ export function validateDesignerInboxRecord(bytes,context,expectedId=null,receip
     next[row.issueNumber]={bodySha256:row.bodySha256,state:row.state};
     if(row.kind==='cancellation') {cancellations.push(row.issueNumber);if(row.state==='open')cancelTargets.add(parsed.metadata.cancelsOrderNumber);}
   }
-  const startable=record.observations.filter(row=>row.kind==='order'&&row.state==='open'&&!cancelTargets.has(row.issueNumber)).map(row=>row.issueNumber);
-  if(!same(next,record.nextFingerprints)||!same(startable,record.startableOrderNumbers)||!same(cancellations,record.cancellationRequestNumbers)) fail('Saved inbox observation set mismatch');
+  const observed=observedOrderIssues(record.observations.map(row=>({number:row.issueNumber,state:row.state,body:row.body})));
+  const legacyStartable=record.observations.filter(row=>row.kind==='order'&&row.state==='open'&&!cancelTargets.has(row.issueNumber)).map(row=>row.issueNumber);
+  const startable=legacyStartable.filter(number=>!orderIssueProblem(observed,number));
+  if(!same(next,record.nextFingerprints)||!(same(startable,record.startableOrderNumbers)||same(legacyStartable,record.startableOrderNumbers))||!same(cancellations,record.cancellationRequestNumbers)) fail('Saved inbox observation set mismatch');
   return record;
 }
 ```
 
-The writer uses stored entries, UTF-8 names, fixed DOS timestamp 1980-01-01, no encryption, ZIP64, extra fields, comments, or data descriptors. The reader accepts stored or raw-deflate entries in that subset, verifies local/central agreement and CRC, and refuses unknown attributes/types. Inventories include every regular prototype file, sorted by path UTF-8 bytes. Digest records are `path NUL decimal-length NUL lowercase-sha256 LF`, no BOM. Every directory is an explicit ZIP entry. Manifests record all relative directory paths in sorted `directories`; when absent, the manifest implies only `assets/` and file ancestors. Captures containing additional empty directories must record them. Required directories and no others must appear, including the captured root and empty `assets/`.
+The writer uses stored entries, UTF-8 names, fixed DOS timestamp 1980-01-01, no encryption, ZIP64, extra fields, comments, or data descriptors. The reader accepts stored or raw-deflate entries in that subset, verifies local/central agreement and CRC, and refuses unknown attributes/types. Inventories include every regular file in the capture, sorted by path UTF-8 bytes. Digest records are `path NUL decimal-length NUL lowercase-sha256 LF` without a BOM. Every directory is an explicit ZIP entry. Manifests record all relative directory paths in sorted `directories`. Legacy version 2 manifests without that list imply only `assets/` and file ancestors. Captures containing additional empty directories must record them. The ZIP must contain exactly the captured root and declared directories.
 
-`packageDelivery(manifestBytes, prototypeRoot)` returns one exact ZIP and a descriptor; persist both without rebuilding them on retry. `verifyDelivery(zip, descriptor)` validates descriptor, exact manifest hash, embedded evidence text/hashes, identities, complete archive contents, and extracted inventory before any extraction. Developer reception calls `receiveDelivery(zip, descriptor, absentStagingPath)`: inspect all declared ZIP metadata, verify destination ancestors and known free capacity against twice the expanded size before inflation, verify all delivery evidence, perform bounded extraction, and reverify installed staging bytes. The parent staging directory must already exist on the configured destination filesystem. Unknown capacity, links in destination ancestors, occupied targets and any validation failure refuse completion. Low-level `extractZip(entries, absentStagingPath)` repeats path, byte-limit and capacity checks before writing. Re-inventory the installed prototype before a receipt. The default declared limits are 5,000 entries, 512 MiB total expanded bytes, 256 MiB per entry, and 100:1 per-entry expansion. Record actual exercised limits in trial evidence.
+`packageDelivery(manifestBytes, captureRoot)` returns one exact ZIP and a descriptor. Persist both for retry. `verifyDelivery(zip, descriptor)` validates descriptor, exact manifest hash, embedded evidence text and hashes, identities, complete archive contents, and payload inventory before extraction. Developer reception calls `receiveDelivery(zip, descriptor, absentStagingPath)` to inspect ZIP metadata, verify destination ancestors and known free capacity against twice the expanded size, perform bounded extraction, and reverify installed staging bytes. The parent staging directory must already exist on the configured destination filesystem. Unknown capacity, links in destination ancestors, occupied targets and any validation failure refuse completion. Low-level `extractZip(entries, absentStagingPath)` repeats path, byte-limit and capacity checks before writing. Re-inventory the installed capture before a receipt. The limits are 5,000 entries, 512 MiB total expanded bytes, 256 MiB per entry, and 100:1 per-entry expansion. File reservation verifies that the exact manifest fits within the same byte budget as the selected files.
 
-Manifest fields are exactly those consumed by `validateManifest`: versioned repository/order/delivery identity, send kind/tag, version number, preserved folder name, UTC capture time, full inventory/payload hash, optional sorted `directories` list of every prototype directory (including empty directories), scope hash, local progress snapshot, and delivery note (`summary`, `outsideOrder`, `workInProgress`). Manifest schemaVersion is 2. Final evidence uses `evidence: {reassessment, decision}` with two required `{json: exactUTF8JSONText, sha256}` records. Reassessment has payload/scope hashes, `agreedScope` from the validated local checklist, and ordered `{ordinal,result,evidenceOrReason}` tasks. Reception reparses `agreedScope.originalBody`, recomputes its UTF-8 hash, checks repository/order identity and exact goal/task definitions, and requires the entire reassessment ordinal sequence to match that agreement. An opaque scope hash or another unchecked list cannot prove completeness.
+Both manifests bind repository, order, delivery, kind, tag, UTC capture time, full inventory and payload hash, scope hash, local progress and the delivery note. A numbered prototype uses schema version 2, its version number and folder name. A file delivery uses schema version 3, `kind: send`, `payloadType: files`, `capturedFolder: files` and a complete sorted `directories` list. It omits the version number and carries null final evidence and unchecked ordinals. Absolute source paths stay in the designer's pending record.
+
+Final evidence uses `evidence: {reassessment, decision}` with two required `{json: exactUTF8JSONText, sha256}` records. Reassessment has payload and scope hashes, `agreedScope` from the validated local checklist, and ordered `{ordinal,result,evidenceOrReason}` tasks. Reception reparses `agreedScope.originalBody`, recomputes its UTF-8 hash, checks repository and order identity and exact goal and task definitions, and requires the entire reassessment ordinal sequence to match that agreement.
 
 `deliveredUncheckedOrdinals` includes every locally unchecked or not-fulfilled task in agreement order. Final decision schemaVersion 2 binds payload, scope, exact reassessment hash, exact unchecked ordinals, the genuine designer statement and UTC recordedAt. A decision records the designer's completion choice and never changes task progress. Nonfinal manifests have `evidence: null` and `deliveredUncheckedOrdinals: null`.
 
@@ -1029,6 +1239,8 @@ Configuration schemaVersion 2 contains role and repository plus the developer's 
 Release notes contain exactly one descriptor in a `designeritl-delivery` fenced JSON block. The descriptor identifies schemaVersion, repositoryId, orderNumber, deliveryId, tag, kind, assetName, assetBytes, manifestSha256 and zipSha256. Surrounding prose is a human note and cannot change machine identity. Hashes provide integrity inside the trusted private transport, not independent publisher authentication.
 
 `capturePrototype(source, absentSnapshot)` runs only after the delivery identity and capture intent are saved. The snapshot parent must already exist. It preserves all directories and compares complete file inventories and directory lists before/copy/after; a mismatch or interruption leaves evidence in staging and never promotes a partial capture. It detects cooperating edits, not adversarial write-and-revert races. An existing snapshot is reconciled rather than overwritten.
+
+`captureFiles(sourceFiles, absentSnapshot, selectedInventory)` applies the same capture checks to the reserved file selection. It compares both the source and copy against the exact preview inventory and preserves empty directories. A changed source requires an explicit reselection before any package or remote attempt.
 
 For a packaged retry call `verifyPendingDelivery(pendingRoot, configuredRepositoryId)` before remote mutation. It verifies the saved identity, assignment token, exact manifest/ZIP/descriptor, frozen evidence files and captured tree. It deliberately does not read the editable source or trust `phase`. Preserve a failure as conflicting evidence; never repair it by repackaging newer source bytes.
 

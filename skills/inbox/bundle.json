@@ -12,29 +12,29 @@
   },
   "revisions": {
     "project.md": 6,
-    "format.md": 6,
-    "setup.md": 12,
-    "inbox.md": 4,
-    "orders.md": 3,
-    "cancellation.md": 2,
-    "designer-inbox.md": 4,
-    "versions.md": 4,
-    "portability.md": 2
+    "format.md": 10,
+    "setup.md": 13,
+    "inbox.md": 6,
+    "orders.md": 4,
+    "cancellation.md": 3,
+    "designer-inbox.md": 5,
+    "versions.md": 5,
+    "portability.md": 4
   },
   "sources": {
-    "SKILL.md": "6e2e83bd6fd27aab6e02d70c30f3c4857c96a629ee8e36cdc634762ca7dddf72",
-    "agents/openai.yaml": "d8aae152f9922380f92a934815b54f20a4eaa0390f7f2791f987b9c7a808459c",
+    "SKILL.md": "a2193770e65f86758d15aca9d60c349fa7dd9d8311c6cdf0956eb9d3bed1433c",
+    "agents/openai.yaml": "25f5e0e26f434bd2c2bcb5fa4184c0738927fc6cca037f3f317294f36e5a17c5",
     "references/project.md": "b0b73120447f977c72ca381e92a5b92d38a76d540e59b2b72e7035423f45b463",
-    "references/format.md": "fefd76cd298c08dcc4a92fcde5246cdb4cab5283243afdd861a2c320cdca71a0",
-    "references/setup.md": "f867c2d7c052e83f4c3e744874c6c94a0c799ae2ad9367904a6678ad0678887b",
-    "references/inbox.md": "a86e593afbdb0d28826bf93c46ae24a5421205bc2d3ca6a39de4a6cd0dc7d601",
-    "references/orders.md": "70a51b80d40e6cdcc7de14028845b7e5c6256e5ff97c035d28a4f17ec035cfd2",
-    "references/cancellation.md": "9efea6dd2c5476e26ade65752f04ce63a0cdcd9bfa3859ec63ae6dfe6380be4d",
-    "references/designer-inbox.md": "865d6bb3f8e871c46585a46cec2e64bea4a8863c9e63ae26104ecc8e12024a99",
-    "references/versions.md": "7964aa30045773b694394d20e2144c1e040dd58d6df71cfb16e0e87046847b27",
-    "references/portability.md": "33bd4377501591a3218e4324ea633d29268bf7700d792aadb6e10514b5d3c808",
+    "references/format.md": "8065a5065044e9938590e468ac8fbdab8d2d913d2d382ed0545ef79658f2d869",
+    "references/setup.md": "3b51406b373c1690a218b48a719eb044970e55f97b219b926aa8da9ec612d84b",
+    "references/inbox.md": "7f427e4f35d33ebecc76e4fbec9863ebbbd3829f3bdcaed21db35f552d116830",
+    "references/orders.md": "c40bc691bacc5fe0efdebf44c939e1da21aac2c18e2070517e890ddae3c14413",
+    "references/cancellation.md": "7f20f6d19ea66a959e2c99804a55c772b8bf38f8d13e86adaa0f62514b080a3f",
+    "references/designer-inbox.md": "d92017d4c3911cf80ee2216ba7093d22d230d1eda2c82d9c580e617c6d4130f6",
+    "references/versions.md": "10f506353d81a37b5244060fae488bcc9ea53d6c126938bdbf394fb431431f75",
+    "references/portability.md": "e245c97e9076c7d421e1eea5c5bceb72cf29793dc949bda16192798b31af52b4",
     "LICENSE": "12f427a032bbeb4f0e99bf4084820449244b89ab91d2f878cd2b2bc9dba51516",
     "scripts/install-human-readme.mjs": "2d320cc3f9d976c1589f6c3b6867b39f033d286b1049fd36933c0bce3d9ee639",
-    "templates/HUMAN-README.md": "6cb3b82b82487caca140487477e82bfb16cc978c1854b17eb36578caf054b35a"
+    "templates/HUMAN-README.md": "a7ffc5a83f092bdc1c5a6504017fed0994d400b15a33a18ba575cbd3295349ec"
   }
 }

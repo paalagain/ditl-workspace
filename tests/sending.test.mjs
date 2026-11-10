@@ -5,12 +5,13 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import fs from 'node:fs';
 import {syncBuiltinESMExports} from 'node:module';
-import {integrity} from '../tools/protocol.mjs';
+import {integrity,inbox} from '../tools/protocol.mjs';
 import {sending} from '../tools/sending.mjs';
 
 const requestId='01684688-751b-44a5-8c15-df0b630f084a';
 const body=`# Goal\nShow a design request\n\n- [ ] 1. Show the design\n\n\`\`\`designeritl-order\n${JSON.stringify({schemaVersion:1,requestId,followsOrderNumber:null,cancelsOrderNumber:null})}\n\`\`\`\n`;
 const issues=[{number:7,state:'open',body,updated_at:'2026-10-31T12:00:00Z'}];
+const deliveryNote={summary:'First pass',outsideOrder:'None',workInProgress:'Draft design'};
 function project() {
   const root=mkdtempSync(join(tmpdir(),'ditl-sending-'));mkdirSync(join(root,'.designeritl'));
   writeFileSync(join(root,'.designeritl/config.json'),JSON.stringify({schemaVersion:2,role:'designer',repository:{repositoryId:101,owner:'alice',name:'transport'}}));
@@ -19,6 +20,53 @@ function project() {
   utimesSync(join(root,'versions/older.v1/index.html'),new Date('2024-01-01'),new Date('2024-01-01'));utimesSync(join(root,'versions/latest.current.v3/index.html'),new Date('2030-01-01'),new Date('2030-01-01'));
   return root;
 }
+test('send installs selected files without HTML and retries from the frozen ZIP',async()=>{
+  const sendingApi=await sending(), format=await integrity(), inboxApi=await inbox(undefined,format), root=project();
+  mkdirSync(join(root,'screenshots','empty'),{recursive:true});
+  const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jF2sAAAAASUVORK5CYII=','base64');
+  writeFileSync(join(root,'screenshots','home.png'),image);
+  writeFileSync(join(root,'notes.md'),'First pass');
+  writeFileSync(join(root,'private.txt'),'Keep local');
+  const observations={issues,releases:[],tags:[]};
+  const order=sendingApi.selectOrder(root,{...observations,orderNumber:7});
+  const selection=sendingApi.selectFiles(root,order,{...observations,paths:['screenshots','notes.md']});
+  assert.throws(()=>sendingApi.reserve(root,selection,{...observations,kind:'final'}),/numbered version/i);
+  const record=sendingApi.reserve(root,selection,{...observations,deliveryNote});
+  const pending=join(root,'.designeritl','pending',record.deliveryId);
+  const recordPath=`.designeritl/pending/${record.deliveryId}/record.json`;
+  function save(update) {
+    const before=format.readProjectRecord(root,recordPath);
+    const validate=bytes=>format.validatePendingRecord(bytes,101);
+    format.prepareRecordReplacement(format.readProject(root),recordPath,Buffer.from(JSON.stringify({...JSON.parse(before),...update})),
+      {owner:'deliveries',kind:'owner',expectedPreviousSha256:format.sha256(before)},validate);
+    format.reconcileRecordReplacement(format.readProject(root),validate);
+  }
+  mkdirSync(join(pending,'snapshot'));
+  const captured=format.captureFiles(record.sourceFiles,record.stagingPath,record.selectedInventory);
+  save({payloadSha256:captured.payloadSha256,capturedInventory:captured.files,capturedDirectories:captured.directories});
+  const manifest=sendingApi.nonfinalManifest(root,record.deliveryId);
+  const {zip,descriptor}=format.packageDelivery(manifest,record.stagingPath);
+  writeFileSync(join(pending,'manifest.json'),manifest);
+  writeFileSync(join(pending,'delivery.zip'),zip);
+  writeFileSync(join(pending,'descriptor.json'),JSON.stringify(descriptor));
+  save({zipSha256:descriptor.zipSha256,manifestSha256:descriptor.manifestSha256,assetBytes:descriptor.assetBytes});
+  writeFileSync(join(root,'notes.md'),'Edited after packaging');
+  assert.equal(sendingApi.selectOrder(root,observations).status,'resume-pending');
+  const saved=format.verifyPendingDelivery(pending,101);
+  const release={id:31,draft:false,tag_name:record.tag,body:'```designeritl-delivery\n'+JSON.stringify(descriptor)+'\n```'};
+  const observation=inboxApi.observeRelease(release,101,[{id:32,name:'delivery.zip',size:zip.length}]);
+  const receipts={};
+  const result=await inboxApi.receiveOne({observation,destinationRoot:join(root,'received'),receipts,
+    download:async path=>writeFileSync(path,saved.zip),refresh:async()=>observation,
+    persistReceipt:async(key,receipt)=>{receipts[key]=receipt;}});
+  assert.equal(result.status,'installed');
+  const installed=join(result.destination,'files');
+  assert.deepEqual(readdirSync(installed).sort(),['notes.md','screenshots']);
+  assert.equal(readFileSync(join(installed,'notes.md'),'utf8'),'First pass');
+  assert.deepEqual(readFileSync(join(installed,'screenshots','home.png')),image);
+  assert.deepEqual(readdirSync(join(installed,'screenshots','empty')),[]);
+  assert.equal(format.readProject(root).state.assignment.orderId.issueNumber,7);
+});
 test('send selects an intentional order before recommending versions and preserves working selection',async()=>{
   const api=await sending(),f=await integrity(),root=project(),original=readFileSync(join(root,'.designeritl/state.json'));
   const choice=api.selectOrder(root,{issues,releases:[]});assert.equal(choice.status,'choose-order');assert.deepEqual(choice.orders.map(row=>row.number),[7]);assert.ok(readFileSync(join(root,'.designeritl/state.json')).equals(original));
@@ -28,6 +76,41 @@ test('send selects an intentional order before recommending versions and preserv
   const selected=api.selectVersion(root,order,{issues,releases:[],versionNumber:1});assert.equal(selected.status,'selected');assert.equal(selected.version.number,1);
   assert.deepEqual(readdirSync(join(root,'versions')).sort(),['latest.current.v3','older.v1']);
   assert.equal(api.selectOrder(root,{issues,releases:[]}).assignment.activationId,order.assignment.activationId,'an active order is reused without a new activation');
+});
+test('a changed file needs a fresh explicit selection before an incomplete capture can resume',async()=>{
+  const api=await sending(), format=await integrity(), root=project();
+  const notes=join(root,'notes.md');
+  writeFileSync(notes,'First draft');
+  const observations={issues,releases:[],tags:[]};
+  const order=api.selectOrder(root,{...observations,orderNumber:7});
+  const selection=api.selectFiles(root,order,{...observations,paths:['notes.md']});
+  const record=api.reserve(root,selection,{...observations,deliveryNote});
+  const snapshot=join(root,'.designeritl','pending',record.deliveryId,'snapshot');
+  mkdirSync(snapshot);
+  writeFileSync(notes,'Second draft');
+  assert.throws(()=>format.captureFiles(record.sourceFiles,record.stagingPath,record.selectedInventory),/changed since reservation/);
+  const remote={repositoryId:101,complete:true,releases:[],tags:[]};
+  const preview=format.inspectFileSelection(root,['notes.md']);
+  const approved={...preview,deliveryNote,explicitDesignerStatement:'Send the revised notes'};
+  const resumed=format.reselectFiles(root,record.deliveryId,approved,remote);
+  assert.equal(resumed.tag,record.tag);
+  format.captureFiles(resumed.sourceFiles,resumed.stagingPath,resumed.selectedInventory);
+  assert.equal(readFileSync(join(resumed.stagingPath,'notes.md'),'utf8'),'Second draft');
+  assert.throws(()=>format.reselectFiles(root,record.deliveryId,approved,remote),/existing snapshot/i);
+});
+test('a file delivery budgets its exact manifest alongside selected file bytes',async()=>{
+  const format=await integrity();
+  const files=[
+    {path:'a.png',bytes:256*1024*1024,sha256:'ab'.repeat(32)},
+    {path:'b.png',bytes:256*1024*1024-1,sha256:'cd'.repeat(32)}
+  ];
+  const record={
+    repositoryId:101,orderNumber:7,deliveryId:'057619e4-c1e4-42d8-b250-8c289387c022',tag:'order-7/send-1',
+    kind:'send',capturedFolder:'files',capturedAt:'2026-10-31T12:00:00.000Z',
+    selectedInventory:{files,directories:[],payloadSha256:format.payloadDigest(files)},
+    fileDeliveryContext:{scopeSha256:'ef'.repeat(32),localProgress:{checkedOrdinals:[],taskContext:''},deliveryNote}
+  };
+  assert.throws(()=>format.fileDeliveryManifest(record),/files and manifest exceed delivery limits/);
 });
 test('send reserves above published tags, drafts and retained local gaps without changing assignment or markers',async()=>{
   const api=await sending(),f=await integrity(),root=project();

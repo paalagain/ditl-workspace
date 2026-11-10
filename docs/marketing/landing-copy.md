@@ -44,13 +44,13 @@ Run `/new-version` to copy the most recently edited version folder into the next
 
 ### 4. Share progress or send the final version
 
-Run `/send` to choose a version and deliver it as is. The most recently edited version is recommended, and any version can be sent.
+Run `/send` to share selected files, folders or a numbered prototype version. For a first pass, send your screenshots and notes directly.
 
 When the work is finished, `/send-final` reassesses the agreed tasks against the version you choose. Review unfinished work and explicitly acknowledge any tasks you want to deliver unchecked. The final delivery closes the order after publication.
 
 ### 5. Pick up the delivery in your project
 
-The developer runs `/inbox` to download new deliveries into the folder configured for the project. Each delivery keeps the version's folder structure and identifies the work order it belongs to. A manifest records the version, whether it is final, a timestamp, and file checksums.
+The developer runs `/inbox` to download new deliveries into the folder configured for the project. Each delivery preserves the captured folder structure and identifies its work order. A manifest records the contents, whether the delivery is final, a timestamp and file checksums.
 
 ---
 
@@ -63,7 +63,7 @@ You decide when to pull work, make a version, or send a delivery. Each action st
 | `/inbox` | Both | Designer: finds work and starts or resumes an order; `check only` reviews without starting. Developer: downloads new deliveries into the configured project folder and shows their work orders. |
 | `/order` | Developer | Sends a goal and numbered task checklist, or feedback as a new linked order. |
 | `/new-version` | Designer | Copies the most recently edited version folder into the next number, or starts from an earlier version with `from vN`. |
-| `/send` | Designer | Asks which version to send, then delivers it as is. |
+| `/send` | Designer | Delivers chosen files, folders or a numbered prototype version. |
 | `/send-final` | Designer | Asks which version to send, reassesses agreed tasks, records completion, sends the final delivery, and closes the active order. |
 
 ---

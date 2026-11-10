@@ -1,9 +1,11 @@
 ---
 name: send
-description: "Share a prototype version as unfinished work while keeping its order open."
+description: "DITL send (explicit invocation only): work in progress."
 disable-model-invocation: true
 ---
 
-Read [Project](references/project.md), [Intentional selection](references/sending.md), then [Deliveries](references/delivery.md). Run the shared nonfinal path for the explicitly opened designer project. Reconcile existing pending operations first. Use the active open order or obtain an explicit open-order choice before asking which numbered version to send. Every new delivery requires an explicit version choice; recommend the most recently edited one and preserve the working marker.
+Explicit invocation required. Proceed only if the current user message explicitly invokes this skill by name (`$send`, `/send`, or the host's equivalent). Otherwise, stop without any action, before reading references or using tools, and say: "You can run this DITL skill by name: `$send` (or `/send` in Claude Code)." Related requests and mentions of the skill are not invocations.
 
-Capture the selected version coherently, enforce its actual direct-file portability, include the single-order/version identity and an accurate delivery note, and publish/verify the exact saved ZIP through the shared recovery protocol. A nonfinal manifest has `kind: send`, `evidence: null` and `deliveredUncheckedOrdinals: null`; local progress is context, with local progress retained as context. Leave the work order open and retain its assignment and all design/checklist state. Report the verified delivery identity and that the work remains unfinished. It implies no developer acceptance.
+Read [Project](references/project.md), [Intentional selection](references/sending.md), then [Deliveries](references/delivery.md). Reconcile pending operations first. Use the active open order or obtain an explicit open-order choice. Use the files, folders or numbered prototype version the designer names. If none are named, ask what to send. Show the resolved file selection before packaging.
+
+Capture the selection and publish the verified ZIP through the shared nonfinal path. Apply the offline portability check when the designer selects a numbered prototype version. For a file delivery, package the selected files as supplied. Leave the order open and report the verified delivery identity and contents.

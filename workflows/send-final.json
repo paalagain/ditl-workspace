@@ -1,1 +1,1 @@
-{"schemaVersion":1,"name":"send-final","roles":["designer"],"description":"Deliver a selected prototype and complete its work order.","references":["project.md","delivery.md"]}
+{"schemaVersion":1,"name":"send-final","roles":["designer"],"description":"DITL send-final (explicit invocation only): final deliveries.","references":["project.md","delivery.md"]}

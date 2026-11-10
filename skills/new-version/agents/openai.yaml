@@ -1,5 +1,5 @@
 interface:
   display_name: "new-version"
-  short_description: "Create or recover a numbered working prototype version."
+  short_description: "DITL new-version (explicit invocation only): working prototypes."
 policy:
   allow_implicit_invocation: false

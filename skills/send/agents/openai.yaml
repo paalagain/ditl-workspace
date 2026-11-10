@@ -1,5 +1,5 @@
 interface:
   display_name: "send"
-  short_description: "Share a prototype version as unfinished work while keeping its order open."
+  short_description: "DITL send (explicit invocation only): work in progress."
 policy:
   allow_implicit_invocation: false

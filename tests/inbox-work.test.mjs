@@ -89,7 +89,8 @@ test('Inbox excludes cancellation requests, withdrawn targets, closed, malformed
   disclose(api,root,issues);
   const before=readFileSync(join(root,'.designeritl/state.json'));
   assert.deepEqual(api.beginWork(root,{issues,releases}),{status:'no-work',orders:[]});
-  for(const orderNumber of [1,2,3,4,5,99])assert.throws(()=>api.beginWork(root,{issues,releases,orderNumber}),/not open and available/);
+  for(const orderNumber of [1,2,3,5,99])assert.throws(()=>api.beginWork(root,{issues,releases,orderNumber}),/not open and available/);
+  assert.throws(()=>api.beginWork(root,{issues,releases,orderNumber:4}),/Issue #4:.*unsupported work-order metadata/i);
   assert.ok(readFileSync(join(root,'.designeritl/state.json')).equals(before));
   assert.equal(existsSync(join(root,'versions')),false);
 });

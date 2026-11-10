@@ -42,3 +42,53 @@ test('captured dependency audit refuses escaped and network loads and retains un
   writeFileSync(join(root,'index.html'),'<!doctype html>');
   const fresh=p.inspectPortability(root,f);assert.notEqual(fresh.payloadSha256,report.payloadSha256);assert.deepEqual(fresh.violations,[]);
 });
+
+test('user-initiated anchor and area navigation is recorded without a dependency violation',async()=>{
+  const root=mkdtempSync(join(tmpdir(),'ditl-navigation-'));mkdirSync(join(root,'assets'));
+  writeFileSync(join(root,'index.html'),'<!doctype html><a href="mailto:person@example.invalid">Email</a><a href="tel:+4712345678">Phone</a><A title="a > b" HREF="https://example.invalid/?a=1&amp;b=2">Website</A><area href=http://example.invalid/map><a href="#details">Details</a>');
+  const f=await integrity(),p=await portability(),report=p.inspectPortability(root,f);
+  assert.deepEqual(report.violations,[]);
+  assert.deepEqual(report.dependencies,[]);
+  assert.deepEqual(report.navigationLinks,[
+    {source:'index.html',element:'a',reference:'mailto:person@example.invalid'},
+    {source:'index.html',element:'a',reference:'tel:+4712345678'},
+    {source:'index.html',element:'a',reference:'https://example.invalid/?a=1&b=2'},
+    {source:'index.html',element:'area',reference:'http://example.invalid/map'}
+  ]);
+  const runtime={schemaVersion:1,payloadSha256:report.payloadSha256,finalPayloadSha256:report.payloadSha256,directFile:true,networkObservation:true,browser:{name:'contract fixture',version:'1'},observationEvidence:'synthetic boundary-validation input only',requestedStates:['initial'],exercisedStates:['initial'],reviewedFiles:report.inspectedFiles,dynamicResolutions:[],requests:[],failures:[],errors:[],checksNotRun:[],unresolvedDependencies:[]};
+  assert.equal(p.decidePortability(report,runtime).status,'eligible');
+  assert.equal(p.decidePortability(report,{...runtime,requests:['https://example.invalid/']}).status,'blocked');
+});
+
+test('navigation schemes remain blocked in load sinks and other anchor attributes',async()=>{
+  const root=mkdtempSync(join(tmpdir(),'ditl-navigation-sinks-'));mkdirSync(join(root,'assets'));
+  const references=[
+    '<img src="https://example.invalid/image">',
+    '<link href="https://example.invalid/style">',
+    '<style>body {background:url(https://example.invalid/background)}</style>',
+    '<form action="https://example.invalid/form"></form>',
+    '<iframe src="https://example.invalid/frame"></iframe>',
+    '<a src="mailto:person@example.invalid">Email</a>',
+    '<a formaction="tel:+4712345678">Phone</a>',
+    '<a data-href="https://example.invalid/data">Data</a>',
+    '<a xlink:href="https://example.invalid/xlink">Xlink</a>',
+    '<a title=\'fake href="https://example.invalid/fake"\'>Quoted</a>',
+    '<a href="javascript:alert(1)">Script</a>',
+    '<a href="//example.invalid/path">Relative protocol</a>',
+    '<a href="ftp://example.invalid/file">FTP</a>',
+    '<video poster="https://example.invalid/poster"></video>',
+    '<object data="https://example.invalid/object"></object>',
+    '<img srcset="https://example.invalid/source 2x">',
+    '<style>@import "https://example.invalid/import";</style>',
+    '<script src="https://example.invalid/script"></script>',
+    '<base href="https://example.invalid/base">',
+    '<script>fetch("https://example.invalid/fetch")</script>'
+  ];
+  const f=await integrity(),p=await portability();
+  for(const html of references) {
+    writeFileSync(join(root,'index.html'),`<!doctype html>${html}`);
+    const report=p.inspectPortability(root,f);
+    assert.ok(report.violations.length,html);
+    assert.deepEqual(report.navigationLinks,[],html);
+  }
+});

@@ -1,6 +1,6 @@
 # Inbox
 
-Revision: 4
+Revision: 6
 
 Read [Project](project.md), [Orders](orders.md), and [Format](format.md). Run only when explicitly invoked. Designer discovery and developer reception use separate role paths.
 
@@ -13,8 +13,8 @@ Read [Project](project.md), [Orders](orders.md), and [Format](format.md). Run on
    - `refresh(observation)`: freshly fetch the exact release ID and its complete asset list, then return `observeRelease` with configured repository ID. A draft, failed/incomplete lookup, changed release/asset identity or descriptor refuses success. Never return the earlier observation without actually fetching it.
    - `persistReceipt(key, receipt)`: reread the complete current Project state after reconciling its journal. Require the key still absent and validate every prior receipt. Add the receipt without replacing any earlier receipt or other state section, then use Project's verified record replacement as owner `inbox`, reread and verify the stored receipt. Update the caller's receipt map only from that verified state. A failed write records no claimed completion. A committed replacement with lost response is reconciled by Project before retry.
 4. Pass `receipts` as the current `completedDownloadReceipts` map. Each value retains repositoryId, deliveryId, orderNumber, releaseId, assetId, manifestSha256, zipSha256, inventorySha256, canonical absolute destination and verifiedAt. Preserve existing UUID keys. An explicit recovery destination adds a fresh `UUID@random-UUID` key when that UUID already exists; old values are immutable. Validate nested receipt fields and reject unknown embedded versions before use. `seenReleaseFingerprints` is only observation history and never a reason to skip discovery or verification.
-5. The gate skips a completed delivery only after receipt, actual installed manifest/complete files/directories and freshly observed remote identity agree. Missing receipt triggers fresh verified staging; an exact existing installed tree repairs only the receipt. Interrupted download/extraction leaves separate retained staging and no receipt. Interrupted promotion is reconciled from the actual destination: absent starts new staging, exact existing tree repairs the receipt, divergent tree is retained. After promotion, installed bytes and current remote identity are verified again before receipt persistence.
-6. Changed/missing local files or changed remote identity are divergence. Preserve earlier folders, receipt values, staging and failed-effect evidence. Continue independent deliveries. Offer verified staging or a user-selected explicit `recoveryDestination`; the same gates verify that destination and append history. Never infer permission to replace an occupied path. Report each outcome, UUID, retained staging/reason and the exact installed `capturedFolder/index.html` for successful reception. A final delivery does not imply developer acceptance.
+5. The gate skips a completed delivery only after receipt, actual installed manifest/complete files/directories and freshly observed remote identity agree. Missing receipt triggers fresh verified staging; an exact existing installed tree repairs only the receipt. Interrupted download/extraction leaves separate retained staging and no receipt. Interrupted promotion is reconciled from the actual destination: absent starts new staging, exact existing tree repairs the receipt, divergent tree is retained. After promotion, installed bytes and current remote identity are verified again before receipt persistence. Only after the verified install is durably recorded by `persistReceipt`, or an existing durable matching receipt is verified, remove this invocation's staging directory. Preserve staging from every failed or interrupted invocation and every other operation. The empty staging root may remain.
+6. Treat changed or missing local files and changed remote identity as divergence. Preserve earlier folders, receipt values, staging and failed-effect evidence. Continue independent deliveries. Offer verified staging or an explicit `recoveryDestination` chosen by the user. The same gates verify that destination and append history. Report each outcome and UUID, plus retained staging and its reason when applicable. A staging cleanup failure leaves the successful result intact and returns `staging` and `cleanupWarning`; report both. For an installed file delivery, report the exact `files/` path and the included paths from the verified manifest. For a numbered prototype, report the exact installed `capturedFolder/index.html`. A final delivery does not imply developer acceptance.
 
 For finals, show the verified original task definitions with reassessment results/evidence and delivered unchecked tasks, retained local progress, technical findings, coverage gaps/checks not run, any unavailable reason and designer acknowledgments. Optional cosmetic advice stays separate. Read these from the already hash-verified frozen records; never reconstruct report hashes through JSON reserialization or imply developer acceptance.
 
@@ -32,7 +32,7 @@ Execute this verbatim module beside the canonical Format module, then call `inbo
 
 ```javascript inbox-v1
 import {randomUUID} from 'node:crypto';
-import {existsSync,lstatSync,mkdirSync,readdirSync,readFileSync,renameSync} from 'node:fs';
+import {existsSync,lstatSync,mkdirSync,readdirSync,readFileSync,renameSync,rmSync} from 'node:fs';
 import {resolve,join,dirname,parse} from 'node:path';
 
 export function inboxV1(format) {
@@ -69,13 +69,9 @@ export function inboxV1(format) {
     if(format.sha256(manifestBytes)!==d.manifestSha256) fail('Installed manifest hash divergence');
     const manifest=format.validateManifest(manifestBytes), prefix=manifest.capturedFolder+'/';
     for(const key of ['repositoryId','orderNumber','deliveryId','tag','kind']) if(manifest[key]!==d[key]) fail('Installed identity divergence');
-    const expected=new Map([['manifest.json',{bytes:manifestBytes.length,sha256:d.manifestSha256}],[prefix,{}],[prefix+'assets/',{}]]);
-    for(const entry of manifest.inventory) {
-      expected.set(prefix+entry.path,entry);
-      const parts=entry.path.split('/');
-      for(let n=1;n<parts.length;n++) expected.set(prefix+parts.slice(0,n).join('/')+'/',{});
-    }
-    for(const path of manifest.directories||[]) expected.set(prefix+path,{});
+    const expected=new Map([['manifest.json',{bytes:manifestBytes.length,sha256:d.manifestSha256}],[prefix,{}]]);
+    for(const entry of manifest.inventory) expected.set(prefix+entry.path,entry);
+    for(const path of format.manifestDirectories(manifest)) expected.set(prefix+path,{});
     if(entries&&!same([...expected.keys()].sort(),entries.map(e=>e.path).sort())) fail('Installed expected archive inventory divergence');
     const seen=[];
     function walk(directory,prefix='') {
@@ -92,7 +88,7 @@ export function inboxV1(format) {
     }
     walk(root);
     if(seen.length!==expected.size) fail('Installed inventory missing files or directories');
-    const inventory=format.inventory(join(root,manifest.capturedFolder));
+    const inventory=format.inventoryDelivery(join(root,manifest.capturedFolder),manifest.payloadType);
     if(!same(inventory.files,manifest.inventory)||inventory.payloadSha256!==manifest.payloadSha256) fail('Installed payload inventory divergence');
     return {manifest,inventory};
   }
@@ -123,6 +119,10 @@ export function inboxV1(format) {
     const stagingParent=join(root,'.designeritl-staging');regularParents(stagingParent);mkdirSync(stagingParent,{recursive:true});
     const staging=join(stagingParent,randomUUID());mkdirSync(staging);
     const zipPath=join(staging,'delivery.zip'), tree=join(staging,'tree');
+    const cleanupStaging=()=>{
+      try {regularParents(staging);rmSync(staging,{recursive:true});return {};}
+      catch(error) {return {staging,cleanupWarning:error.message};}
+    };
     await download(zipPath,observation);
     const verified=format.receiveDelivery(readFileSync(zipPath),d,tree);
     if(!sameObservation(await refresh(observation),observation)) fail('Current remote delivery identity divergence');
@@ -138,11 +138,11 @@ export function inboxV1(format) {
     const installed=verifyInstalled(target,observation,verified.entries);
     if(!sameObservation(await refresh(observation),observation)) fail('Current remote delivery identity divergence before receipt');
     const match=previous.find(([,r])=>receiptMatches(r,observation,target,installed.manifest));
-    if(match) return {status:'skipped',destination:target,receiptKey:match[0],staging};
+    if(match) return {status:'skipped',destination:target,receiptKey:match[0],...cleanupStaging()};
     const receipt={repositoryId:d.repositoryId,deliveryId:d.deliveryId,orderNumber:d.orderNumber,releaseId:observation.releaseId,assetId:observation.assetId,manifestSha256:d.manifestSha256,zipSha256:d.zipSha256,inventorySha256:installed.manifest.payloadSha256,destination:target,verifiedAt:new Date().toISOString()};
     const key=Object.hasOwn(receipts,d.deliveryId)?`${d.deliveryId}@${randomUUID()}`:d.deliveryId;
     await persistReceipt(key,receipt);
-    return {status:existed?'repaired':'installed',destination:target,receiptKey:key,staging};
+    return {status:existed?'repaired':'installed',destination:target,receiptKey:key,...cleanupStaging()};
   }
   async function receiveAll(deliveries,options) {
     const results=[];

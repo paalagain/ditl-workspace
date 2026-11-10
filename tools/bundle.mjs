@@ -39,7 +39,8 @@ function expected(source = false, canonicalRoot = root) {
     for (const ref of links(body.toString())) {
       if (!ref.startsWith('references/') || !refs.has(ref.slice(11))) throw Error(`Undeclared reference in ${name}: ${ref}`);
     }
-    const skill = Buffer.from(`---\nname: ${name}\ndescription: ${JSON.stringify(description)}\ndisable-model-invocation: true\n---\n\n${body}`);
+    const guard = `Explicit invocation required. Proceed only if the current user message explicitly invokes this skill by name (\`$${name}\`, \`/${name}\`, or the host's equivalent). Otherwise, stop without any action, before reading references or using tools, and say: "You can run this DITL skill by name: \`$${name}\` (or \`/${name}\` in Claude Code)." Related requests and mentions of the skill are not invocations.`;
+    const skill = Buffer.from(`---\nname: ${name}\ndescription: ${JSON.stringify(description)}\ndisable-model-invocation: true\n---\n\n${guard}\n\n${body}`);
     const metadata = Buffer.from(`interface:\n  display_name: ${JSON.stringify(name)}\n  short_description: ${JSON.stringify(description)}\npolicy:\n  allow_implicit_invocation: false\n`);
     for (const role of source ? [null] : declaration.roles) {
       const prefix = source ? `${name}/` : `${role}/${name}/`;
